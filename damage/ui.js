@@ -50,36 +50,68 @@ function inputRowHtml({ id, label, value, suffix = '', step = '0.1', min }) {
     </label>`;
 }
 
-function renderAttackMods(state) {
-  return state.attackMods.map((mod, index) => `
-    <div class="dynamic-row" data-kind="attackMods" data-index="${index}">
-      <span class="row-number">${index + 1}</span>
-      <select class="compact-select mod-type" aria-label="攻撃補正${index + 1}の種類">
-        <option value="mult" ${mod.type !== 'add' ? 'selected' : ''}>倍率</option>
-        <option value="add" ${mod.type === 'add' ? 'selected' : ''}>加算</option>
-      </select>
-      <div class="input-with-suffix compact-input">
-        <input class="mod-value" inputmode="decimal" type="number" step="0.1" value="${escapeHtml(mod.value)}" />
-        <span class="suffix">${mod.type === 'add' ? 'ATK' : '%'}</span>
-      </div>
-      <button class="icon-button remove-row" type="button" aria-label="削除">×</button>
-    </div>
-  `).join('');
+function quickButtonsHtml(values, attrs, formatter = value => `${value}%`) {
+  return `
+    <div class="quick-values row-quick-values">
+      ${values.map(value => `<button type="button" class="quick-value" ${attrs(value)}>${formatter(value)}</button>`).join('')}
+    </div>`;
 }
 
-function renderSimpleRows(values, kind, suffix, labelPrefix) {
-  return values.map((value, index) => `
-    <div class="dynamic-row simple" data-kind="${kind}" data-index="${index}">
-      <span class="row-number">${index + 1}</span>
-      <div class="input-with-suffix compact-input grow">
-        <input class="simple-value" aria-label="${labelPrefix}${index + 1}" inputmode="decimal" type="number" step="0.1" value="${escapeHtml(value)}" />
-        <span class="suffix">${suffix}</span>
-      </div>
-      ${(kind === 'attributeMultipliers' && index === 0)
-        ? '<span class="row-placeholder"></span>'
-        : '<button class="icon-button remove-row" type="button" aria-label="削除">×</button>'}
-    </div>
-  `).join('');
+function renderAttackMods(state) {
+  return state.attackMods.map((mod, index) => {
+    const values = mod.type === 'add'
+      ? [15, 25, 30, 50, 125, 150]
+      : [110, 120, 150, 200];
+    const quick = quickButtonsHtml(
+      values,
+      value => `data-quick-attack-index="${index}" data-quick-value="${value}"`,
+      value => mod.type === 'add' ? `+${value}` : `${value}%`
+    );
+
+    return `
+      <div class="dynamic-item">
+        <div class="dynamic-row" data-kind="attackMods" data-index="${index}">
+          <span class="row-number">${index + 1}</span>
+          <select class="compact-select mod-type" aria-label="攻撃補正${index + 1}の種類">
+            <option value="mult" ${mod.type !== 'add' ? 'selected' : ''}>乗算</option>
+            <option value="add" ${mod.type === 'add' ? 'selected' : ''}>加算</option>
+          </select>
+          <div class="input-with-suffix compact-input">
+            <input class="mod-value" inputmode="decimal" type="number" step="0.1" value="${escapeHtml(mod.value)}" />
+            <span class="suffix">${mod.type === 'add' ? 'ATK' : '%'}</span>
+          </div>
+          <button class="icon-button remove-row" type="button" aria-label="削除">×</button>
+        </div>
+        ${quick}
+      </div>`;
+  }).join('');
+}
+
+function renderSimpleRows(values, kind, suffix, labelPrefix, quickValues = []) {
+  return values.map((value, index) => {
+    const quick = quickValues.length
+      ? quickButtonsHtml(
+          quickValues,
+          option => `data-quick-kind="${kind}" data-quick-index="${index}" data-quick-value="${option}"`,
+          option => kind === 'reductions' ? `${option}%` : `${option}%`
+        )
+      : '';
+
+    return `
+      <div class="dynamic-item">
+        <div class="dynamic-row simple" data-kind="${kind}" data-index="${index}">
+          <span class="row-number">${index + 1}</span>
+          <div class="input-with-suffix compact-input grow">
+            <input class="simple-value" aria-label="${labelPrefix}${index + 1}" inputmode="decimal" type="number" step="0.1" value="${escapeHtml(value)}" />
+            <span class="suffix">${suffix}</span>
+          </div>
+          ${(kind === 'attributeMultipliers' && index === 0)
+            ? '<span class="row-placeholder"></span>'
+            : '<button class="icon-button remove-row" type="button" aria-label="削除">×</button>'}
+        </div>
+        ${quick}
+      </div>`;
+  }).join('');
 }
 
 function render(state, errorMessage = '') {
@@ -129,7 +161,7 @@ function render(state, errorMessage = '') {
       <div class="section-heading">
         <div>
           <h2>攻撃バフ・デバフ</h2>
-          <p>上から順に適用します。倍率は100%=変化なし。加算はATKへの直接加算です。</p>
+          <p>上から順に適用します。乗算は100%=変化なし。加算はATKへの直接加算です。</p>
         </div>
         <button class="add-button" type="button" data-add="attackMods" ${state.attackMods.length >= LIMITS.attackMods ? 'disabled' : ''}>＋ 追加</button>
       </div>
@@ -148,10 +180,7 @@ function render(state, errorMessage = '') {
         <button class="add-button" type="button" data-add="attributeMultipliers" ${state.attributeMultipliers.length >= LIMITS.attributeMultipliers ? 'disabled' : ''}>＋ 2個目</button>
       </div>
       <div class="dynamic-list">
-        ${renderSimpleRows(state.attributeMultipliers, 'attributeMultipliers', '%', '属性倍率')}
-      </div>
-      <div class="quick-values" aria-label="属性倍率の候補">
-        ${[80,90,100,105,107,110,140,150].map(v => `<button type="button" class="quick-value" data-quick-attribute="${v}">${v}%</button>`).join('')}
+        ${renderSimpleRows(state.attributeMultipliers, 'attributeMultipliers', '%', '属性倍率', [80,90,100,105,107,110,140,150,180,190])}
       </div>
     </section>
 
@@ -164,7 +193,7 @@ function render(state, errorMessage = '') {
         <button class="add-button" type="button" data-add="defenseMods" ${state.defenseMods.length >= LIMITS.defenseMods ? 'disabled' : ''}>＋ 追加</button>
       </div>
       <div class="dynamic-list">
-        ${state.defenseMods.length ? renderSimpleRows(state.defenseMods, 'defenseMods', '%', '防御補正') : '<div class="empty-note">補正なし</div>'}
+        ${state.defenseMods.length ? renderSimpleRows(state.defenseMods, 'defenseMods', '%', '防御補正', [40,50,60,70,80,85,90,115,120,140]) : '<div class="empty-note">補正なし</div>'}
       </div>
       <div class="limit-note">最大10個</div>
     </section>
@@ -178,7 +207,7 @@ function render(state, errorMessage = '') {
         <button class="add-button" type="button" data-add="reductions" ${state.reductions.length >= LIMITS.reductions ? 'disabled' : ''}>＋ 追加</button>
       </div>
       <div class="dynamic-list">
-        ${state.reductions.length ? renderSimpleRows(state.reductions, 'reductions', '%軽減', 'ダメージ軽減') : '<div class="empty-note">軽減なし</div>'}
+        ${state.reductions.length ? renderSimpleRows(state.reductions, 'reductions', '%軽減', 'ダメージ軽減', [40,50,55,60,70]) : '<div class="empty-note">軽減なし</div>'}
       </div>
       <div class="limit-note">最大5個</div>
     </section>
@@ -247,7 +276,15 @@ root.addEventListener('input', event => {
 
 root.addEventListener('change', event => {
   if (event.target.classList.contains('mod-type')) {
+    const row = event.target.closest('[data-kind="attackMods"]');
+    const index = Number(row?.dataset.index);
     state = collectStateFromDom(state);
+
+    // 種類を切り替えたときは、その種類の標準値を入れる。
+    // 乗算: 100%（変化なし） / 加算: +50 ATK
+    if (Number.isInteger(index) && state.attackMods[index]) {
+      state.attackMods[index].value = event.target.value === 'add' ? '50' : '100';
+    }
     rerender();
   }
 });
@@ -286,9 +323,22 @@ root.addEventListener('click', event => {
     return;
   }
 
-  if (button.dataset.quickAttribute) {
-    state.attributeMultipliers[0] = button.dataset.quickAttribute;
-    rerender();
+  if (button.dataset.quickAttackIndex !== undefined && button.dataset.quickValue !== undefined) {
+    const index = Number(button.dataset.quickAttackIndex);
+    if (Number.isInteger(index) && state.attackMods[index]) {
+      state.attackMods[index].value = button.dataset.quickValue;
+      rerender();
+    }
+    return;
+  }
+
+  if (button.dataset.quickKind && button.dataset.quickIndex !== undefined && button.dataset.quickValue !== undefined) {
+    const kind = button.dataset.quickKind;
+    const index = Number(button.dataset.quickIndex);
+    if (Array.isArray(state[kind]) && Number.isInteger(index) && state[kind][index] !== undefined) {
+      state[kind][index] = button.dataset.quickValue;
+      rerender();
+    }
   }
 });
 

@@ -6,14 +6,14 @@ export const LIMITS = Object.freeze({
 });
 
 export const DEFAULT_STATE = Object.freeze({
-  attackPower: '100',
-  attackMods: [],
+  attackPower: '84',
+  attackMods: [{ type: 'mult', value: '100' }],
   attributeMultipliers: ['100'],
-  skillMultiplier: '100',
+  skillMultiplier: '200',
   hits: '1',
   undeadMultiplier: '100',
-  defenseMods: [],
-  reductions: []
+  defenseMods: ['100'],
+  reductions: ['0']
 });
 
 export function cloneDefaultState() {

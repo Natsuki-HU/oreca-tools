@@ -1,8 +1,21 @@
 import assert from 'node:assert/strict';
 import { calculateDamage, cloneDefaultState } from '../damage/engine.js';
 
-function run(name, edit, expected) {
+function neutralState() {
   const state = cloneDefaultState();
+  state.attackPower = '100';
+  state.attackMods = [];
+  state.attributeMultipliers = ['100'];
+  state.skillMultiplier = '100';
+  state.hits = '1';
+  state.undeadMultiplier = '100';
+  state.defenseMods = [];
+  state.reductions = [];
+  return state;
+}
+
+function run(name, edit, expected) {
+  const state = neutralState();
   edit(state);
   const got = calculateDamage(state);
   for (const [key, value] of Object.entries(expected)) {
@@ -67,5 +80,15 @@ run('標準コア999上限後に防御デバフ', state => {
   minHit: 1498,
   maxHit: 1498
 });
+
+{
+  const state = cloneDefaultState();
+  assert.equal(state.attackPower, '84', 'default attackPower');
+  assert.equal(state.skillMultiplier, '200', 'default skillMultiplier');
+  assert.deepEqual(state.attackMods, [{ type: 'mult', value: '100' }], 'default attackMods');
+  assert.deepEqual(state.defenseMods, ['100'], 'default defenseMods');
+  assert.deepEqual(state.reductions, ['0'], 'default reductions');
+  console.log('✓ v0.2.3 default state');
+}
 
 console.log('All damage engine tests passed.');

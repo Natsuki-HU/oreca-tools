@@ -188,3 +188,10 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
   .panel { padding: 14px; }
   .result-panel { top: max(4px, env(safe-area-inset-top)); }
 }
+
+/* v0.2.3: 各入力欄にプリセット候補を表示 */
+.dynamic-item { display: grid; gap: 6px; }
+.row-quick-values { margin-top: 0; padding-left: 34px; }
+@media (max-width: 560px) {
+  .row-quick-values { padding-left: 30px; }
+}
