@@ -1,4 +1,4 @@
-const CACHE_NAME = 'oreca-tools-v0.2.3';
+const CACHE_NAME = 'oreca-tools-v0.3.0';
 const CORE = [
   './',
   './index.html',
@@ -9,6 +9,10 @@ const CORE = [
   './damage/index.html',
   './damage/ui.js',
   './damage/engine.js',
+  './kill/',
+  './kill/index.html',
+  './kill/ui.js',
+  './kill/engine.js',
   './manifest.webmanifest',
   './icons/icon-180.png',
   './icons/icon-192.png',
@@ -29,9 +33,6 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
-
-  // 確認→修正を繰り返す段階では、オンライン時は新しいファイルを優先する。
-  // 通信失敗時のみキャッシュへフォールバックする network-first。
   event.respondWith(
     fetch(event.request)
       .then(response => {

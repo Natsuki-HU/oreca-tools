@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ORECA Tools" />
+  <title>撃破確率計算 - ORECA Tools</title>
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="../icons/icon-180.png" />
+  <link rel="stylesheet" href="../assets/common.css" />
+</head>
+<body>
+  <div class="app-shell kill-shell">
+    <header class="tool-header">
+      <div>
+        <a class="back-link" href="../">← ツール一覧</a>
+        <div class="eyebrow">ORECA TOOLS</div>
+        <h1>撃破確率計算</h1>
+        <p>素早さ・複数行動・バフ／デバフ・毒を順番に処理して、最後の味方行動までの撃破確率を計算します。</p>
+      </div>
+      <button id="resetButton" class="ghost-button" type="button">リセット</button>
+    </header>
+
+    <main id="killRoot" class="tool-root" aria-live="polite"></main>
+
+    <footer class="site-footer">Version <span data-app-version></span></footer>
+  </div>
+
+  <script type="module" src="./ui.js"></script>
+  <script type="module" src="../assets/pwa.js"></script>
+</body>
+</html>

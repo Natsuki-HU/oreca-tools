@@ -195,3 +195,71 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 @media (max-width: 560px) {
   .row-quick-values { padding-left: 30px; }
 }
+
+/* v0.3.0: 撃破確率計算 */
+.kill-shell { width: min(980px, 100%); }
+.kill-result { grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr); }
+.kill-result-main .result-number { font-size: clamp(30px, 9vw, 48px); }
+.kill-verdict-card { display: flex; flex-direction: column; justify-content: center; }
+.kill-verdict { margin-top: 5px; font-size: 20px; }
+.three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.count-select { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
+.count-select select { width: 72px; min-height: 38px; }
+.ally-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.ally-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 9px; }
+.mini-field { display: grid; gap: 5px; min-width: 0; }
+.mini-field > span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.mini-field input, .mini-field select { min-height: 38px; }
+.rule-note-panel p { margin-top: 8px; }
+.turn-stack { display: grid; gap: 12px; }
+.turn-heading { align-items: center; }
+.turn-actions { display: flex; gap: 7px; }
+.turn-action-list { display: grid; gap: 10px; margin-top: 14px; }
+.action-card { border: 1px solid var(--line); border-radius: 13px; padding: 12px; }
+.action-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.action-card-head > select { width: min(210px, 55%); min-height: 38px; }
+.action-input-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.effects-block { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.sub-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.effects-list { display: grid; gap: 8px; margin-top: 8px; }
+.effect-row { display: grid; grid-template-columns: minmax(130px, 1.3fr) minmax(92px, .8fr) minmax(84px, .75fr) minmax(90px, 1fr) minmax(90px, 1fr) 38px; gap: 6px; align-items: center; }
+.effect-row > select, .effect-row > input, .effect-row .compact-input input { min-height: 38px; }
+.effect-note { grid-column: 2 / 6; color: var(--muted); font-size: 11px; }
+.compact-empty { padding: 8px; }
+.mini-add, .mini-danger { border: 1px solid var(--line); border-radius: 9px; min-height: 32px; padding: 4px 8px; background: var(--panel); cursor: pointer; }
+.mini-add { color: var(--accent); }
+.mini-danger { color: var(--danger); }
+.mini-add:disabled { opacity: .35; cursor: default; }
+.enemy-action-card { background: color-mix(in srgb, var(--panel) 94%, var(--accent) 6%); }
+.enemy-head { align-items: center; }
+.toggle-line { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: 12px; }
+.toggle-line input { width: 18px; min-height: 18px; }
+.enemy-action-body.is-disabled { opacity: .48; }
+.inline-note { font-size: 11px; }
+.poison-note { margin-top: 9px; }
+.turn-add-row { display: flex; justify-content: center; gap: 8px; }
+.timeline-list { display: grid; gap: 7px; margin-top: 12px; }
+.timeline-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.timeline-row:last-child { border-bottom: 0; }
+.timeline-row small { grid-column: 1 / -1; color: var(--muted); }
+
+@media (max-width: 760px) {
+  .three-col, .ally-grid { grid-template-columns: 1fr; }
+  .action-input-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .effect-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 38px; }
+  .effect-row > :nth-child(n+4):not(.remove-effect), .effect-row .effect-note { grid-column: span 1; }
+  .effect-note { grid-column: 1 / 3; }
+}
+
+@media (max-width: 520px) {
+  .kill-result { grid-template-columns: 1fr 1fr; }
+  .action-card-head { align-items: flex-start; }
+  .action-card-head > select { width: 58%; }
+  .action-input-grid { grid-template-columns: 1fr; }
+  .turn-actions { flex-direction: column; }
+  .effect-row { grid-template-columns: minmax(0, 1fr) 38px; }
+  .effect-row > *:not(.remove-effect) { grid-column: 1; }
+  .effect-row .remove-effect { grid-column: 2; grid-row: 1; }
+  .effect-note { grid-column: 1; }
+  .turn-add-row { flex-direction: column; }
+}
