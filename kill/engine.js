@@ -1,4 +1,4 @@
-// 撃破確率シミュレータ v0.4.3
+// 撃破確率シミュレータ v0.4.4
 // 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([
@@ -93,6 +93,7 @@ function defaultAttackAction() {
     hitsMin: '',
     hitsMax: '',
     undeadSkillMultiplier: '',
+    poisonedSkillMultiplier: '',
     deadlyPoisonSkillMultiplier: '',
     buff: defaultAllyBuff(),
     effects: []
@@ -103,7 +104,7 @@ function defaultSkipAction() {
   return {
     kind: 'skip', skillMultiplier: '200', skillMultiplierMin: '', skillMultiplierMax: '', skillMultiplierStep: '',
     attackAttribute: 'none', attackAttribute2: 'none', attackType: 'physical', hits: '1', hitsMin: '', hitsMax: '',
-    undeadSkillMultiplier: '', deadlyPoisonSkillMultiplier: '', buff: defaultAllyBuff(), effects: []
+    undeadSkillMultiplier: '', poisonedSkillMultiplier: '', deadlyPoisonSkillMultiplier: '', buff: defaultAllyBuff(), effects: []
   };
 }
 
@@ -365,6 +366,7 @@ function normalizeTarget(effect, actorIndex, allyCount) {
   const target = effect.target ?? 'self';
   if (target === 'all') return Array.from({ length: allyCount }, (_, i) => i);
   if (target === 'self') return [actorIndex];
+  if (target === 'others') return Array.from({ length: allyCount }, (_, i) => i).filter(i => i !== actorIndex);
   const m = /^ally(\d)$/.exec(target);
   if (m) {
     const i = Number(m[1]) - 1;
@@ -555,6 +557,7 @@ function ensureAction(action, side = 'ally') {
     hitsMin: action?.hitsMin ?? '',
     hitsMax: action?.hitsMax ?? '',
     undeadSkillMultiplier: action?.undeadSkillMultiplier ?? '',
+    poisonedSkillMultiplier: action?.poisonedSkillMultiplier ?? '',
     deadlyPoisonSkillMultiplier: action?.deadlyPoisonSkillMultiplier ?? '',
     buff: { ...defaultBuff, ...(action?.buff ?? {}) },
     effects: Array.isArray(action?.effects) ? action.effects : [],
@@ -631,6 +634,7 @@ export function simulateKillProbability(state) {
           );
           let skillMultiplier = action.skillMultiplier;
           if (runtime.enemy.race === 'undead' && action.undeadSkillMultiplier !== '') skillMultiplier = action.undeadSkillMultiplier;
+          if (runtime.enemy.poison !== 'none' && action.poisonedSkillMultiplier !== '') skillMultiplier = action.poisonedSkillMultiplier;
           if (runtime.enemy.poison === 'deadlyPoison' && action.deadlyPoisonSkillMultiplier !== '') skillMultiplier = action.deadlyPoisonSkillMultiplier;
           const damageDist = attackDamageDistribution({
             attack,

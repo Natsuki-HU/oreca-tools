@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { attackDamageDistribution, cloneDefaultState, simulateKillProbability } from '../kill/engine.js';
-import { SKILL_PRESET_BY_ID } from '../kill/presets.js';
+import { SKILL_PRESETS, SKILL_PRESET_BY_ID } from '../kill/presets.js';
 
 function approx(actual, expected, eps = 1e-10) {
   assert.ok(Math.abs(actual - expected) <= eps, `expected ${expected}, got ${actual}`);
@@ -198,4 +198,46 @@ console.log('kill-engine tests: OK');
   assert.deepEqual(marking.effects[0], {
     type: 'defenseDown', mode: 'mult', value: '140', duration: '99', expiry: 'sourceNextActionEnd'
   });
+}
+
+
+// 12) 「主要技」はバトル入手チャート末尾のコマンドサンプル一覧と明示追加技だけ。
+// キャラクタープリセット専用技は自動入力には使うが、主要技メニューには出さない。
+{
+  const majorIds = new Set(SKILL_PRESETS.filter(x => x.major === true).map(x => x.id));
+  for (const id of [
+    'loki_brand', 'oni_spirit', 'sea_king_gaze', 'spirit_blessing', 'growl', 'sun_hymn',
+    'sword_dance', 'name_announcement', 'fire2', 'fire3', 'aqua2', 'aqua3', 'wind2',
+    'marking_arrow', 'self_destruct', 'suck_dry', 'bubble_grand', 'rengeki',
+    'heat_wave', 'ice_storm_strike', 'false_reflect_wall',
+    // ユーザー指定の追加枠
+    'poison_bite', 'melting_breath', 'epidemic_glass'
+  ]) assert.ok(majorIds.has(id), `${id} should be a major skill`);
+
+  for (const id of [
+    'foot_sweep', 'attack_bang', 'dragon_tail', 'aqua_breath', 'shining_breath',
+    'fire1', 'ice1', 'thunder1', 'meteor', 'purifying_flame', 'shiden', 'critical_hit'
+  ]) assert.equal(majorIds.has(id), false, `${id} must stay character-preset-only`);
+}
+
+// 13) ファイア!! / アクア!! だけは例外として !!! 版も主要技に持つ。
+{
+  const fire2 = SKILL_PRESET_BY_ID.get('fire2');
+  const fire3 = SKILL_PRESET_BY_ID.get('fire3');
+  const aqua2 = SKILL_PRESET_BY_ID.get('aqua2');
+  const aqua3 = SKILL_PRESET_BY_ID.get('aqua3');
+  const wind2 = SKILL_PRESET_BY_ID.get('wind2');
+  assert.deepEqual([fire2.skillName, fire2.skillMultiplier, fire2.attackType], ['ファイア!!', '150', 'magic']);
+  assert.deepEqual([fire3.skillName, fire3.skillMultiplier, fire3.attackType], ['ファイア!!!', '200', 'magic']);
+  assert.deepEqual([aqua2.skillName, aqua2.skillMultiplier, aqua2.attackType], ['アクア!!', '150', 'magic']);
+  assert.deepEqual([aqua3.skillName, aqua3.skillMultiplier, aqua3.attackType], ['アクア!!!', '200', 'magic']);
+  assert.deepEqual([wind2.skillName, wind2.skillMultiplier, wind2.attackType], ['ウィンド!!', '150', 'magic']);
+  assert.equal(SKILL_PRESETS.some(x => x.skillName === 'ウィンド!!!' && x.major === true), false);
+}
+
+// 14) どくつぶしは敵がすでに毒・猛毒なら技倍率105%を使う。
+{
+  const poisonCrush = SKILL_PRESET_BY_ID.get('poison_crush');
+  assert.equal(poisonCrush.skillMultiplier, '80');
+  assert.equal(poisonCrush.poisonedSkillMultiplier, '105');
 }

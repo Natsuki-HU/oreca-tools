@@ -16,8 +16,8 @@ import {
   presetIdForSkillName
 } from './presets.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.4.3';
-const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.4';
+const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.3', 'oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
 const root = document.getElementById('killRoot');
 const resetButton = document.getElementById('resetButton');
 
@@ -157,6 +157,7 @@ function normalizeState(saved) {
         hitsMin: raw.hitsMin ?? '',
         hitsMax: raw.hitsMax ?? '',
         undeadSkillMultiplier: raw.undeadSkillMultiplier ?? '',
+        poisonedSkillMultiplier: raw.poisonedSkillMultiplier ?? '',
         deadlyPoisonSkillMultiplier: raw.deadlyPoisonSkillMultiplier ?? '',
         buff: { ...defaultPrimaryBuff('ally'), ...(raw.buff ?? {}) },
         effects: Array.isArray(raw.effects) ? raw.effects : [],
@@ -207,10 +208,12 @@ function characterOptionsHtml(selected) {
 }
 
 function skillPresetOptionsHtml(selected) {
-  const buffs = SKILL_PRESETS.filter(x => x.selectable !== false && (x.kind === 'buff' || x.kind === 'effect'));
-  const attacks = SKILL_PRESETS.filter(x => x.selectable !== false && x.kind === 'attack');
+  const major = SKILL_PRESETS.filter(x => x.selectable !== false && x.major === true);
+  const buffs = major.filter(x => x.majorGroup === 'buff');
+  const attacks = major.filter(x => x.majorGroup === 'attack');
+  const others = major.filter(x => x.majorGroup === 'other');
   const render = items => items.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === selected ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
-  return `<option value="" ${!selected ? 'selected' : ''}>手動入力</option><optgroup label="強化・効果">${render(buffs)}</optgroup><optgroup label="攻撃技">${render(attacks)}</optgroup>`;
+  return `<option value="" ${!selected ? 'selected' : ''}>手動入力</option><optgroup label="バフ・強化技">${render(buffs)}</optgroup><optgroup label="攻撃技">${render(attacks)}</optgroup><optgroup label="その他">${render(others)}</optgroup>`;
 }
 
 function resetAttackPresetFields(action) {
@@ -225,6 +228,7 @@ function resetAttackPresetFields(action) {
   action.hitsMin = '';
   action.hitsMax = '';
   action.undeadSkillMultiplier = '';
+  action.poisonedSkillMultiplier = '';
   action.deadlyPoisonSkillMultiplier = '';
 }
 
@@ -251,6 +255,7 @@ function applySkillPresetToAction(action, presetId) {
     action.hitsMin = skill.hitsMin ?? '';
     action.hitsMax = skill.hitsMax ?? '';
     action.undeadSkillMultiplier = skill.undeadSkillMultiplier ?? '';
+    action.poisonedSkillMultiplier = skill.poisonedSkillMultiplier ?? '';
     action.deadlyPoisonSkillMultiplier = skill.deadlyPoisonSkillMultiplier ?? '';
   } else if (skill.kind === 'buff') {
     action.buff = deepClone(skill.buff ?? defaultPrimaryBuff('ally'));
@@ -282,13 +287,19 @@ function applyCharacterPreset(allyIndex, characterId) {
         action.kind = 'skip'; action.skillName = preset.skill; action.skillPresetId = ''; action.effects = [];
       } else {
         const presetId = presetIdForCharacterSkill(characterId, preset.skill);
-        if (presetId) applySkillPresetToAction(action, presetId);
-        else { action.kind = preset.kind ?? 'attack'; action.skillName = preset.skill; action.skillPresetId = ''; }
+        if (presetId) {
+          applySkillPresetToAction(action, presetId);
+          // キャラ専用技は値だけ自動入力し、「主要技プリセット」の選択状態にはしない。
+          if (SKILL_PRESET_BY_ID.get(presetId)?.major !== true) action.skillPresetId = '';
+        } else { action.kind = preset.kind ?? 'attack'; action.skillName = preset.skill; action.skillPresetId = ''; }
       }
     } else if (preset.secondSkill && turnIndex === 1) {
       const presetId = presetIdForCharacterSkill(characterId, preset.secondSkill);
-      if (presetId) applySkillPresetToAction(action, presetId);
-      else { action.kind = preset.secondKind ?? 'attack'; action.skillName = preset.secondSkill; action.skillPresetId = ''; }
+      if (presetId) {
+        applySkillPresetToAction(action, presetId);
+        // キャラ専用技は値だけ自動入力し、「主要技プリセット」の選択状態にはしない。
+        if (SKILL_PRESET_BY_ID.get(presetId)?.major !== true) action.skillPresetId = '';
+      } else { action.kind = preset.secondKind ?? 'attack'; action.skillName = preset.secondSkill; action.skillPresetId = ''; }
     } else {
       action.kind = 'same';
       action.skillName = '';
@@ -315,6 +326,7 @@ function effectDefault(type, side) {
 function targetOptions(selected, includeSelf = true) {
   const items = [];
   if (includeSelf) items.push(['self', '自分']);
+  if (includeSelf) items.push(['others', '自分以外の味方']);
   for (let i = 1; i <= state.allyCount; i++) items.push([`ally${i}`, `キャラ${i}`]);
   items.push(['all', '味方全員']);
   return optionsHtml(items, selected);
