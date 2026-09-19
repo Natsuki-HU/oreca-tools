@@ -1,16 +1,29 @@
 import { APP_VERSION } from '../assets/version.js';
 import { calculateDamage, cloneDefaultState, LIMITS } from './engine.js';
 
-const STORAGE_KEY = 'oreca-tools.damage.v0.2';
+const STORAGE_KEY = 'oreca-tools.damage.v0.3';
+const LEGACY_STORAGE_KEY = 'oreca-tools.damage.v0.2';
 const root = document.getElementById('toolRoot');
 const resetButton = document.getElementById('resetButton');
 
 for (const el of document.querySelectorAll('[data-app-version]')) el.textContent = APP_VERSION;
 
+function normalizeDefenseMod(mod) {
+  if (mod && typeof mod === 'object' && 'value' in mod) {
+    return { sign: mod.sign === '-' ? '-' : '+', value: String(mod.value ?? '0') };
+  }
+  const multiplier = Number(mod);
+  if (!Number.isFinite(multiplier)) return { sign: '+', value: '0' };
+  return multiplier <= 100
+    ? { sign: '+', value: String(100 - multiplier) }
+    : { sign: '-', value: String(multiplier - 100) };
+}
+
 function loadState() {
   const fallback = cloneDefaultState();
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+    const saved = raw ? JSON.parse(raw) : null;
     if (!saved || typeof saved !== 'object') return fallback;
     return {
       ...fallback,
@@ -19,7 +32,7 @@ function loadState() {
       attributeMultipliers: Array.isArray(saved.attributeMultipliers) && saved.attributeMultipliers.length
         ? saved.attributeMultipliers.slice(0, LIMITS.attributeMultipliers)
         : ['100'],
-      defenseMods: Array.isArray(saved.defenseMods) ? saved.defenseMods.slice(0, LIMITS.defenseMods) : [],
+      defenseMods: Array.isArray(saved.defenseMods) ? saved.defenseMods.slice(0, LIMITS.defenseMods).map(normalizeDefenseMod) : [],
       reductions: Array.isArray(saved.reductions) ? saved.reductions.slice(0, LIMITS.reductions) : []
     };
   } catch {
@@ -114,6 +127,37 @@ function renderSimpleRows(values, kind, suffix, labelPrefix, quickValues = []) {
   }).join('');
 }
 
+
+function renderDefenseMods(state) {
+  const quickValues = [
+    ['+', '60'], ['+', '50'], ['+', '40'], ['+', '30'], ['+', '20'],
+    ['+', '15'], ['+', '10'], ['-', '15'], ['-', '20'], ['-', '40']
+  ];
+  return state.defenseMods.map((mod, index) => {
+    const sign = mod.sign === '-' ? '-' : '+';
+    const quick = `
+      <div class="quick-values row-quick-values">
+        ${quickValues.map(([qSign, qValue]) => `<button type="button" class="quick-value" data-quick-defense-index="${index}" data-quick-sign="${qSign}" data-quick-value="${qValue}">${qSign}${qValue}%</button>`).join('')}
+      </div>`;
+    return `
+      <div class="dynamic-item">
+        <div class="dynamic-row" data-kind="defenseMods" data-index="${index}">
+          <span class="row-number">${index + 1}</span>
+          <select class="compact-select defense-sign" aria-label="防御補正${index + 1}の符号">
+            <option value="+" ${sign === '+' ? 'selected' : ''}>＋</option>
+            <option value="-" ${sign === '-' ? 'selected' : ''}>－</option>
+          </select>
+          <div class="input-with-suffix compact-input grow">
+            <input class="defense-value" aria-label="防御補正${index + 1}の効果量" inputmode="decimal" type="number" min="0" step="0.1" value="${escapeHtml(mod.value)}" />
+            <span class="suffix">%</span>
+          </div>
+          <button class="icon-button remove-row" type="button" aria-label="削除">×</button>
+        </div>
+        ${quick}
+      </div>`;
+  }).join('');
+}
+
 function render(state, errorMessage = '') {
   let result;
   let error = errorMessage;
@@ -188,12 +232,12 @@ function render(state, errorMessage = '') {
       <div class="section-heading">
         <div>
           <h2>防御バフ・デバフ</h2>
-          <p>被ダメ倍率として上から順に適用します。80%=20%減、120%=20%増です。</p>
+          <p>＋は防御アップ、－は防御ダウンです。効果量だけ入力します。＋20%なら被ダメージ20%減、－20%なら20%増です。</p>
         </div>
         <button class="add-button" type="button" data-add="defenseMods" ${state.defenseMods.length >= LIMITS.defenseMods ? 'disabled' : ''}>＋ 追加</button>
       </div>
       <div class="dynamic-list">
-        ${state.defenseMods.length ? renderSimpleRows(state.defenseMods, 'defenseMods', '%', '防御補正', [40,50,60,70,80,85,90,115,120,140]) : '<div class="empty-note">補正なし</div>'}
+        ${state.defenseMods.length ? renderDefenseMods(state) : '<div class="empty-note">補正なし</div>'}
       </div>
       <div class="limit-note">最大10個</div>
     </section>
@@ -238,9 +282,13 @@ function collectStateFromDom(state) {
     value: row.querySelector('.mod-value').value
   }));
 
-  for (const kind of ['attributeMultipliers', 'defenseMods', 'reductions']) {
+  for (const kind of ['attributeMultipliers', 'reductions']) {
     state[kind] = [...root.querySelectorAll(`[data-kind="${kind}"]`)].map(row => row.querySelector('.simple-value').value);
   }
+  state.defenseMods = [...root.querySelectorAll('[data-kind="defenseMods"]')].map(row => ({
+    sign: row.querySelector('.defense-sign')?.value === '-' ? '-' : '+',
+    value: row.querySelector('.defense-value')?.value ?? '0'
+  }));
 
   if (!state.attributeMultipliers.length) state.attributeMultipliers = ['100'];
   return state;
@@ -302,7 +350,7 @@ root.addEventListener('click', event => {
     } else if (addKind === 'attributeMultipliers' && state.attributeMultipliers.length < LIMITS.attributeMultipliers) {
       state.attributeMultipliers.push('100');
     } else if (addKind === 'defenseMods' && state.defenseMods.length < LIMITS.defenseMods) {
-      state.defenseMods.push('100');
+      state.defenseMods.push({ sign: '+', value: '0' });
     } else if (addKind === 'reductions' && state.reductions.length < LIMITS.reductions) {
       state.reductions.push('0');
     }
@@ -327,6 +375,18 @@ root.addEventListener('click', event => {
     const index = Number(button.dataset.quickAttackIndex);
     if (Number.isInteger(index) && state.attackMods[index]) {
       state.attackMods[index].value = button.dataset.quickValue;
+      rerender();
+    }
+    return;
+  }
+
+  if (button.dataset.quickDefenseIndex !== undefined && button.dataset.quickValue !== undefined) {
+    const index = Number(button.dataset.quickDefenseIndex);
+    if (Number.isInteger(index) && state.defenseMods[index]) {
+      state.defenseMods[index] = {
+        sign: button.dataset.quickSign === '-' ? '-' : '+',
+        value: button.dataset.quickValue
+      };
       rerender();
     }
     return;

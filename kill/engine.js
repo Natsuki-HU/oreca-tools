@@ -1,4 +1,4 @@
-// 撃破確率シミュレータ v0.4.6
+// 撃破確率シミュレータ v0.4.7
 // 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([

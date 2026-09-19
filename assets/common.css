@@ -294,3 +294,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .skill-name-field { margin-top: 10px; }
 .enemy-effect-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 @media (max-width: 720px) { .enemy-effect-fields { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+
+/* v0.4.7: 対象選択をコンパクトなプルダウンに変更 */
+.target-field { min-width: 0; }
+.target-select { width: 100%; min-width: 0; min-height: 38px; }

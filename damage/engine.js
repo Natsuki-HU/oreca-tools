@@ -12,7 +12,7 @@ export const DEFAULT_STATE = Object.freeze({
   skillMultiplier: '200',
   hits: '1',
   undeadMultiplier: '100',
-  defenseMods: ['100'],
+  defenseMods: [{ sign: '+', value: '0' }],
   reductions: ['0']
 });
 
@@ -81,6 +81,34 @@ function applySequentialPercent(value, values, label, trace) {
   return current;
 }
 
+function applyDefenseMods(value, mods, trace) {
+  let current = value;
+  (mods ?? []).forEach((mod, index) => {
+    // v0.2以前の倍率文字列も読み取り可能にしておく。
+    if (typeof mod !== 'object' || mod === null) {
+      const next = mulPercentTrunc(current, mod);
+      if (next === null) throw new Error(`防御補正${index + 1}が不正です`);
+      current = next;
+      trace.push(`防御補正${index + 1}（旧形式 ×${mod}%） → ${current}`);
+      return;
+    }
+    const amountFraction = parseDecimalFraction(mod.value);
+    if (!amountFraction || amountFraction.numerator < 0n) throw new Error(`防御補正${index + 1}の効果量が不正です`);
+    const sign = mod.sign === '-' ? '-' : '+';
+    if (sign === '+' && amountFraction.numerator > 100n * amountFraction.denominator) {
+      throw new Error(`防御補正${index + 1}の+側は0～100%で入力してください`);
+    }
+    const base = 100n * amountFraction.denominator;
+    const multiplierNumerator = sign === '+' ? base - amountFraction.numerator : base + amountFraction.numerator;
+    current = Number((BigInt(current) * multiplierNumerator) / base);
+    const multiplier = sign === '+'
+      ? 100 - Number(amountFraction.numerator) / Number(amountFraction.denominator)
+      : 100 + Number(amountFraction.numerator) / Number(amountFraction.denominator);
+    trace.push(`防御補正${index + 1}（${sign}${mod.value}% → 被ダメ×${multiplier}%） → ${current}`);
+  });
+  return current;
+}
+
 function applyReductions(value, reductions, trace) {
   let current = value;
   reductions.forEach((reduction, index) => {
@@ -138,8 +166,8 @@ export function calculateDamage(state) {
   const minTrace = [...traceBase, `最低乱数（-5.0%の増減量を0方向に整数化） → ${minHit}`];
   const maxTrace = [...traceBase, `最高乱数（+5.0%の増減量を0方向に整数化） → ${maxHit}`];
 
-  minHit = applySequentialPercent(minHit, state.defenseMods ?? [], '防御補正', minTrace);
-  maxHit = applySequentialPercent(maxHit, state.defenseMods ?? [], '防御補正', maxTrace);
+  minHit = applyDefenseMods(minHit, state.defenseMods ?? [], minTrace);
+  maxHit = applyDefenseMods(maxHit, state.defenseMods ?? [], maxTrace);
 
   minHit = applyReductions(minHit, state.reductions ?? [], minTrace);
   maxHit = applyReductions(maxHit, state.reductions ?? [], maxTrace);

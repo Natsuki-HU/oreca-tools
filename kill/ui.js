@@ -16,9 +16,9 @@ import {
   presetIdForSkillName
 } from './presets.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.4.6';
-const PREVIOUS_STORAGE_KEY = 'oreca-tools.kill.v0.4.5';
-const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.4', 'oreca-tools.kill.v0.4.3', 'oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.7';
+const PREVIOUS_STORAGE_KEY = 'oreca-tools.kill.v0.4.6';
+const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.5', 'oreca-tools.kill.v0.4.4', 'oreca-tools.kill.v0.4.3', 'oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
 const root = document.getElementById('killRoot');
 const resetButton = document.getElementById('resetButton');
 
@@ -361,14 +361,30 @@ function resolvedTargetIds(target, actorIndex = 0) {
   return [];
 }
 
-function targetCheckboxesHtml(selected, actorIndex = 0, className = 'effect-target-checkbox', disabled = false) {
-  const selectedSet = new Set(resolvedTargetIds(selected, actorIndex));
-  return `<div class="target-toggle-group" aria-label="対象">
-    ${[1, 2, 3].map(i => {
-      const inactive = i > state.allyCount;
-      return `<label class="target-toggle ${inactive ? 'is-inactive' : ''}"><input type="checkbox" class="${className}" value="ally${i}" ${selectedSet.has(`ally${i}`) ? 'checked' : ''} ${(disabled || inactive) ? 'disabled' : ''}><span>キャラ${i}</span></label>`;
-    }).join('')}
-  </div>`;
+function targetCode(selected, actorIndex = 0) {
+  return resolvedTargetIds(selected, actorIndex)
+    .map(x => x.replace('ally', ''))
+    .sort()
+    .join('');
+}
+
+function targetFromCode(code) {
+  return [...String(code ?? '')]
+    .filter(x => /^[1-3]$/.test(x))
+    .map(x => `ally${x}`);
+}
+
+function targetSelectHtml(selected, actorIndex = 0, className = 'effect-target-select', disabled = false) {
+  const choices = state.allyCount <= 1
+    ? ['1']
+    : state.allyCount === 2
+      ? ['1', '2', '12']
+      : ['1', '2', '3', '12', '13', '23', '123'];
+  const current = targetCode(selected, actorIndex);
+  const selectedCode = choices.includes(current) ? current : choices[0];
+  return `<select class="${className} target-select" aria-label="対象" ${disabled ? 'disabled' : ''}>
+    ${choices.map(code => `<option value="${code}" ${code === selectedCode ? 'selected' : ''}>${code}</option>`).join('')}
+  </select>`;
 }
 
 function effectFieldsHtml(effect, side, actorIndex = 0) {
@@ -381,7 +397,7 @@ function effectFieldsHtml(effect, side, actorIndex = 0) {
   }
   if (type === 'weaknessBuff') {
     return `
-      ${targetCheckboxesHtml(effect.target ?? 'all', actorIndex)}
+      ${targetSelectHtml(effect.target ?? 'all', actorIndex)}
       <div class="input-with-suffix compact-input">
         <input class="effect-duration" type="number" inputmode="numeric" step="1" min="1" max="99" value="${escapeHtml(effect.duration ?? '3')}" aria-label="継続ターン" />
         <span class="suffix">ターン</span>
@@ -399,7 +415,7 @@ function effectFieldsHtml(effect, side, actorIndex = 0) {
 
   const isTargeted = ['atkBuff', 'speedBuff', 'allyAtkDebuff', 'allySpeedDebuff'].includes(type);
   const target = isTargeted
-    ? targetCheckboxesHtml(effect.target ?? (side === 'enemy' ? 'all' : 'self'), actorIndex)
+    ? targetSelectHtml(effect.target ?? (side === 'enemy' ? 'all' : 'self'), actorIndex)
     : '';
   const modeControl = type === 'defenseDown'
     ? ''
@@ -447,7 +463,7 @@ function primaryBuffHtml(buff, side, disabled = false, actorIndex = 0) {
   const types = side === 'enemy' ? ENEMY_BUFF_TYPES : ALLY_BUFF_TYPES;
   const isAdd = b.mode === 'add';
   const target = side === 'ally'
-    ? `<label class="mini-field target-field"><span>対象</span>${targetCheckboxesHtml(b.target ?? 'self', actorIndex, 'main-buff-target-checkbox', disabled)}</label>`
+    ? `<label class="mini-field target-field"><span>対象</span>${targetSelectHtml(b.target ?? 'self', actorIndex, 'main-buff-target-select', disabled)}</label>`
     : '';
   return `
     <div class="primary-buff-block">
@@ -524,7 +540,7 @@ function enemyEffectFieldsHtml(effect, enabled) {
   const targeted = effect.type === 'allyAtkDebuff' || effect.type === 'allySpeedDebuff';
   const defaultValue = '20';
   return `<div class="enemy-effect-fields">
-    ${targeted ? `<label class="mini-field target-field"><span>対象</span>${targetCheckboxesHtml(effect.target ?? 'all', 0, 'enemy-effect-target-checkbox', !enabled)}</label>` : ''}
+    ${targeted ? `<label class="mini-field target-field"><span>対象</span>${targetSelectHtml(effect.target ?? 'all', 0, 'enemy-effect-target-select', !enabled)}</label>` : ''}
     <label class="mini-field"><span>方式</span><select class="enemy-effect-mode" ${disabled}><option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>割合</option><option value="add" ${effect.mode === 'add' ? 'selected' : ''}>固定値</option></select></label>
     <label class="mini-field"><span>効果量</span><div class="input-with-suffix"><input class="enemy-effect-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(effect.value ?? defaultValue)}" ${disabled}><span class="suffix">${effect.mode === 'add' ? '' : '%'}</span></div></label>
     <label class="mini-field"><span>継続</span><div class="input-with-suffix"><input class="enemy-effect-duration" type="number" inputmode="numeric" min="1" max="99" step="1" value="${escapeHtml(effect.duration ?? '1')}" ${disabled}><span class="suffix">ターン</span></div></label>
@@ -690,8 +706,8 @@ function collectStateFromDom() {
       action.enabled = card.querySelector('.enemy-enabled')?.checked ?? action.enabled;
       const type = card.querySelector('.enemy-effect-type')?.value ?? action.effect?.type ?? 'none';
       const effect = { type };
-      const targetBoxes = [...card.querySelectorAll('.enemy-effect-target-checkbox')];
-      const target = targetBoxes.length ? targetBoxes.filter(x => x.checked).map(x => x.value) : undefined;
+      const targetCodeValue = card.querySelector('.enemy-effect-target-select')?.value;
+      const target = targetCodeValue ? targetFromCode(targetCodeValue) : undefined;
       const mode = card.querySelector('.enemy-effect-mode')?.value;
       const value = card.querySelector('.enemy-effect-value')?.value;
       const duration = card.querySelector('.enemy-effect-duration')?.value;
@@ -730,8 +746,8 @@ function collectPrimaryBuff(card, side, current) {
     value: card.querySelector('.main-buff-value')?.value ?? '50',
     duration: card.querySelector('.main-buff-duration')?.value ?? '1'
   };
-  const targetBoxes = [...card.querySelectorAll('.main-buff-target-checkbox')];
-  if (targetBoxes.length) buff.target = targetBoxes.filter(x => x.checked).map(x => x.value);
+  const targetCodeValue = card.querySelector('.main-buff-target-select')?.value;
+  if (targetCodeValue) buff.target = targetFromCode(targetCodeValue);
   return buff;
 }
 
@@ -739,8 +755,8 @@ function collectEffects(card) {
   return [...card.querySelectorAll('.effect-row')].map(row => {
     const type = row.querySelector('.effect-type')?.value;
     const effect = { type };
-    const targetBoxes = [...row.querySelectorAll('.effect-target-checkbox')];
-    const target = targetBoxes.length ? targetBoxes.filter(x => x.checked).map(x => x.value) : undefined;
+    const targetCodeValue = row.querySelector('.effect-target-select')?.value;
+    const target = targetCodeValue ? targetFromCode(targetCodeValue) : undefined;
     const mode = row.querySelector('.effect-mode')?.value;
     const value = row.querySelector('.effect-value')?.value;
     const duration = row.querySelector('.effect-duration')?.value;

@@ -58,12 +58,20 @@ run('攻撃補正は上から順に適用', state => {
 });
 
 run('防御補正→ダメージ軽減', state => {
-  state.defenseMods = ['80'];
+  state.defenseMods = [{ sign: '+', value: '20' }];
   state.reductions = ['25'];
 }, {
   minHit: 57,
   maxHit: 63
 });
+
+run('防御+20%は被ダメージ20%減', state => {
+  state.defenseMods = [{ sign: '+', value: '20' }];
+}, { minHit: 76, maxHit: 84 });
+
+run('防御-20%は被ダメージ20%増', state => {
+  state.defenseMods = [{ sign: '-', value: '20' }];
+}, { minHit: 114, maxHit: 126 });
 
 run('ヒット数は1ヒット結果に最後に掛ける', state => {
   state.hits = '5';
@@ -75,7 +83,7 @@ run('ヒット数は1ヒット結果に最後に掛ける', state => {
 run('標準コア999上限後に防御デバフ', state => {
   state.attackPower = '999';
   state.skillMultiplier = '500';
-  state.defenseMods = ['150'];
+  state.defenseMods = [{ sign: '-', value: '50' }];
 }, {
   minHit: 1498,
   maxHit: 1498
@@ -86,7 +94,7 @@ run('標準コア999上限後に防御デバフ', state => {
   assert.equal(state.attackPower, '84', 'default attackPower');
   assert.equal(state.skillMultiplier, '200', 'default skillMultiplier');
   assert.deepEqual(state.attackMods, [{ type: 'mult', value: '100' }], 'default attackMods');
-  assert.deepEqual(state.defenseMods, ['100'], 'default defenseMods');
+  assert.deepEqual(state.defenseMods, [{ sign: '+', value: '0' }], 'default defenseMods');
   assert.deepEqual(state.reductions, ['0'], 'default reductions');
   console.log('✓ v0.2.3 default state');
 }
