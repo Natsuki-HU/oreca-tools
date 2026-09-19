@@ -31,10 +31,10 @@ run('基準100・乱数±5%', () => {}, {
   totalMax: 105
 });
 
-run('101の最低乱数は95ではなく96', state => {
+run('101の最低乱数はfloor(101×0.95)=95', state => {
   state.attackPower = '101';
 }, {
-  minHit: 96,
+  minHit: 95,
   maxHit: 106
 });
 
@@ -43,7 +43,7 @@ run('複合属性は順次切り捨て', state => {
   state.attributeMultipliers = ['150', '105'];
 }, {
   preVariance: 158,
-  minHit: 151,
+  minHit: 150,
   maxHit: 165
 });
 

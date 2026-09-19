@@ -16,7 +16,8 @@ import {
   presetIdForSkillName
 } from './presets.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.4.9';
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.10';
+const DIRECT_STORAGE_KEYS = ['oreca-tools.kill.v0.4.9'];
 // v0.4.5～v0.4.8 は攻撃力バフの乗算値を「増加量」で保存（50 = ×1.5）。
 // v0.4.9 からはダメージ計算と同じく最終倍率を直接保存（150 = ×1.5）。
 const AMOUNT_STORAGE_KEYS = ['oreca-tools.kill.v0.4.8', 'oreca-tools.kill.v0.4.7', 'oreca-tools.kill.v0.4.6', 'oreca-tools.kill.v0.4.5'];
@@ -233,6 +234,10 @@ function loadState() {
   try {
     const current = localStorage.getItem(STORAGE_KEY);
     if (current) return normalizeState(JSON.parse(current), false, false);
+    for (const key of DIRECT_STORAGE_KEYS) {
+      const previous = localStorage.getItem(key);
+      if (previous) return normalizeState(JSON.parse(previous), false, false);
+    }
     for (const key of AMOUNT_STORAGE_KEYS) {
       const previous = localStorage.getItem(key);
       if (previous) return normalizeState(JSON.parse(previous), false, true);

@@ -1,4 +1,4 @@
-// 撃破確率シミュレータ v0.4.9
+// 撃破確率シミュレータ v0.4.10
 // 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([
@@ -192,6 +192,48 @@ function trunc0(value) {
   return Math.trunc(value);
 }
 
+function parseDecimalFraction(value) {
+  const raw = String(value ?? '').trim();
+  if (!/^[-+]?\d+(?:\.\d+)?$/.test(raw)) return null;
+  const sign = raw.startsWith('-') ? -1n : 1n;
+  const clean = raw.replace(/^[-+]/, '');
+  const [intPart, fracPart = ''] = clean.split('.');
+  const denominator = 10n ** BigInt(fracPart.length);
+  const numerator = sign * BigInt((intPart || '0') + fracPart);
+  return { numerator, denominator };
+}
+
+function mulPercentTrunc(value, percent) {
+  const fraction = parseDecimalFraction(percent);
+  if (!fraction) return null;
+  const numerator = BigInt(trunc0(value)) * fraction.numerator;
+  const denominator = fraction.denominator * 100n;
+  return Number(numerator / denominator);
+}
+
+function decimalPlaces(value) {
+  const raw = String(value ?? '').trim().replace(/^[-+]/, '');
+  const dot = raw.indexOf('.');
+  return dot < 0 ? 0 : raw.length - dot - 1;
+}
+
+function scaledDecimal(value, scaleDigits) {
+  const fraction = parseDecimalFraction(value);
+  if (!fraction) return null;
+  const scale = 10n ** BigInt(scaleDigits);
+  return fraction.numerator * scale / fraction.denominator;
+}
+
+function scaledDecimalToString(value, scaleDigits) {
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+  if (scaleDigits === 0) return `${negative ? '-' : ''}${abs}`;
+  const scale = 10n ** BigInt(scaleDigits);
+  const integer = abs / scale;
+  const fraction = String(abs % scale).padStart(scaleDigits, '0').replace(/0+$/, '');
+  return `${negative ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`;
+}
+
 function parseNumber(value, label, { min = -Infinity, max = Infinity } = {}) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${label}が不正です`);
@@ -208,7 +250,8 @@ function applyMod(value, mod) {
   const amount = Number(mod.value);
   if (!Number.isFinite(amount)) return value;
   if (mod.mode === 'add') return value + trunc0(amount);
-  return trunc0(value * amount / 100);
+  const next = mulPercentTrunc(value, mod.value);
+  return next === null ? value : next;
 }
 
 function applyMods(base, mods, { clampMin = -Infinity, clampMax = Infinity } = {}) {
@@ -249,7 +292,8 @@ function oneHitDistribution({
   attack, skillMultiplier, attackAttribute, attackAttribute2, attackAttributes, defenderAttribute, defenderRace,
   attackType, defenseMods, weaknessBoost
 }) {
-  let base = trunc0(attack * skillMultiplier / 100);
+  let base = mulPercentTrunc(attack, skillMultiplier);
+  if (base === null) throw new Error('技倍率が不正です');
   for (const attr of attackAttributesFromConfig({ attackAttribute, attackAttribute2, attackAttributes })) {
     const coefficient = boostedAttrCoefficient(attrCoefficient(attr, defenderAttribute), weaknessBoost);
     base = trunc0(base * coefficient / 1000);
@@ -258,7 +302,8 @@ function oneHitDistribution({
 
   const counts = new Map();
   for (let r = -50; r <= 50; r++) {
-    let damage = base + trunc0(base * r / 1000);
+    // アプリ本体と同じく、乱数係数950～1050をダメージ本体へ直接乗算して整数化する。
+    let damage = trunc0(base * (1000 + r) / 1000);
     damage = Math.min(damage, 999);
     damage = applyMods(damage, defenseMods, { clampMin: 0 });
     counts.set(damage, (counts.get(damage) ?? 0) + 1);
@@ -278,8 +323,17 @@ function convolveDamage(a, b) {
 }
 
 function decimalRange(min, max, step) {
-  const count = Math.max(0, Math.round((max - min) / step));
-  return Array.from({ length: count + 1 }, (_, i) => min + i * step);
+  const scaleDigits = Math.max(decimalPlaces(min), decimalPlaces(max), decimalPlaces(step));
+  const minScaled = scaledDecimal(min, scaleDigits);
+  const maxScaled = scaledDecimal(max, scaleDigits);
+  const stepScaled = scaledDecimal(step, scaleDigits);
+  if (minScaled === null || maxScaled === null || stepScaled === null || stepScaled <= 0n) return [];
+  const out = [];
+  for (let value = minScaled; value <= maxScaled; value += stepScaled) {
+    out.push(scaledDecimalToString(value, scaleDigits));
+    if (out.length > 100000) throw new Error('技倍率範囲が広すぎます');
+  }
+  return out;
 }
 
 function averageDistributions(distributions) {
@@ -293,15 +347,16 @@ function averageDistributions(distributions) {
 }
 
 export function attackDamageDistribution(config) {
-  const fixedMultiplier = parseNumber(config.skillMultiplier, '技倍率', { min: 0 });
+  parseNumber(config.skillMultiplier, '技倍率', { min: 0 });
+  const fixedMultiplier = String(config.skillMultiplier);
   const hasMultiplierRange = config.skillMultiplierMin !== '' && config.skillMultiplierMin != null
     && config.skillMultiplierMax !== '' && config.skillMultiplierMax != null;
   let multipliers = [fixedMultiplier];
   if (hasMultiplierRange) {
     const min = parseNumber(config.skillMultiplierMin, '技倍率下限', { min: 0 });
-    const max = parseNumber(config.skillMultiplierMax, '技倍率上限', { min });
-    const step = parseNumber(config.skillMultiplierStep || '0.1', '技倍率刻み', { min: 0.000001 });
-    multipliers = decimalRange(min, max, step);
+    parseNumber(config.skillMultiplierMax, '技倍率上限', { min });
+    parseNumber(config.skillMultiplierStep || '0.1', '技倍率刻み', { min: 0.000001 });
+    multipliers = decimalRange(config.skillMultiplierMin, config.skillMultiplierMax, config.skillMultiplierStep || '0.1');
   }
   const one = averageDistributions(multipliers.map(skillMultiplier => oneHitDistribution({ ...config, skillMultiplier })));
 
@@ -413,17 +468,23 @@ function addTimedMod(list, effect, seq, defaultMode = 'mult', sourceContext = nu
     return;
   }
   const duration = Math.max(1, parseIntValue(effect.duration ?? '1', '継続ターン', { min: 1, max: 99 }));
-  list.push({ ...common, remaining: duration });
+  // 付与されたそのターンの終了時には残りターンを減らさない。
+  // これにより「1ターン」の自己バフも次の行動ターンまで正しく残る。
+  list.push({ ...common, remaining: duration, justApplied: true });
 }
 
 function addTimedFlag(list, effect, seq) {
   const duration = Math.max(1, parseIntValue(effect.duration ?? '1', '継続ターン', { min: 1, max: 99 }));
-  list.push({ remaining: duration, seq });
+  list.push({ remaining: duration, seq, justApplied: true });
 }
 
 function decrementTimedEffects(runtime) {
   const dec = list => list
-    .map(x => Number.isFinite(x.remaining) ? ({ ...x, remaining: x.remaining - 1 }) : x)
+    .map(x => {
+      if (!Number.isFinite(x.remaining)) return x;
+      if (x.justApplied) return { ...x, justApplied: false };
+      return { ...x, remaining: x.remaining - 1 };
+    })
     .filter(x => !Number.isFinite(x.remaining) || x.remaining > 0);
   for (const ally of runtime.allies) {
     ally.attackMods = dec(ally.attackMods);

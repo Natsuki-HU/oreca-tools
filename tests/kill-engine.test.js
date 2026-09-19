@@ -88,7 +88,7 @@ console.log('kill-engine tests: OK');
 {
   const s = cloneDefaultState();
   s.allyCount = 1;
-  s.enemy.maxHp = '160';
+  s.enemy.maxHp = '159';
   s.enemy.speed = '10';
   s.allies[0].attack = '84';
   s.allies[0].speed = '100';
@@ -319,4 +319,105 @@ console.log('kill-engine tests: OK');
   s.turns[1].allyActions[1] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
   const r = simulateKillProbability(s);
   assert.ok(r.killChance > 0);
+}
+
+
+// 17) 攻撃力バフ1ターンは、付与ターン終了時に消えず次ターンの攻撃へ反映される。
+{
+  const s = cloneDefaultState();
+  s.allyCount = 1;
+  s.enemy.maxHp = '200';
+  s.enemy.speed = '10';
+  s.allies[0].attack = '100';
+  s.allies[0].speed = '100';
+  s.turns[0].allyActions[0] = {
+    kind: 'buff',
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '1' },
+    effects: []
+  };
+  s.turns[0].enemyAction.enabled = false;
+  s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));
+  s.turns[1].allyActions[0] = {
+    kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', attackAttribute2: 'none',
+    attackType: 'physical', hits: '1', effects: []
+  };
+  const r = simulateKillProbability(s);
+  // ATK200、100%技の最低乱数は190。敵HP200なので+5%以上の一部だけ撃破。
+  assert.ok(r.killChance > 0 && r.killChance < 1);
+  const attackEvent = r.timeline.find(x => x.kind === 'attack' && x.turn === 2);
+  assert.equal(attackEvent.maxLiveHp, 10);
+}
+
+// 18) 技倍率→第1属性→第2属性→アンデッド補正→乱数の順で整数化する。
+{
+  const dist = attackDamageDistribution({
+    attack: 101,
+    skillMultiplier: '100',
+    attackAttribute: 'fire',
+    attackAttribute2: 'light',
+    attackType: 'magic',
+    defenderAttribute: 'water',
+    defenderRace: 'undead',
+    defenseMods: [],
+    weaknessBoost: false,
+    hits: '1', hitsMin: '', hitsMax: ''
+  });
+  const damages = [...dist.keys()];
+  // 101 -> 火弱点151 -> 光1.05で158 -> アンデッド魔法1.2で189 -> 95%=179, 105%=198
+  assert.equal(Math.min(...damages), 179);
+  assert.equal(Math.max(...damages), 198);
+}
+
+// 19) 小数技倍率も浮動小数誤差で1下がらない。
+{
+  const dist = attackDamageDistribution({
+    attack: 125,
+    skillMultiplier: '258.4',
+    attackAttribute: 'none',
+    attackAttribute2: 'none',
+    attackType: 'physical',
+    defenderAttribute: 'fire',
+    defenderRace: 'normal',
+    defenseMods: [],
+    weaknessBoost: false,
+    hits: '1', hitsMin: '', hitsMax: ''
+  });
+  // 125×258.4%=323 exactly before variance.
+  // 乱数0%（係数1000）は101通りの中央に存在するため323ダメージが分布に含まれる。
+  assert.ok(dist.has(323));
+}
+
+// 20) 防御ダウン20は乱数後のダメージを1.2倍する。
+{
+  const dist = attackDamageDistribution({
+    attack: 100,
+    skillMultiplier: '100',
+    attackAttribute: 'none',
+    attackAttribute2: 'none',
+    attackType: 'physical',
+    defenderAttribute: 'fire',
+    defenderRace: 'normal',
+    defenseMods: [{ mode: 'mult', value: 120, seq: 1 }],
+    weaknessBoost: false,
+    hits: '1', hitsMin: '', hitsMax: ''
+  });
+  const damages = [...dist.keys()];
+  assert.equal(Math.min(...damages), 114);
+  assert.equal(Math.max(...damages), 126);
+}
+
+// 21) 弱点属性強化は1.5→1.9、1.4→1.8として属性段階で適用する。
+{
+  const fireWeak = attackDamageDistribution({
+    attack: 100, skillMultiplier: '100', attackAttribute: 'fire', attackAttribute2: 'none',
+    attackType: 'physical', defenderAttribute: 'water', defenderRace: 'normal', defenseMods: [],
+    weaknessBoost: true, hits: '1', hitsMin: '', hitsMax: ''
+  });
+  const heatWeak = attackDamageDistribution({
+    attack: 100, skillMultiplier: '100', attackAttribute: 'heat', attackAttribute2: 'none',
+    attackType: 'physical', defenderAttribute: 'wind', defenderRace: 'normal', defenseMods: [],
+    weaknessBoost: true, hits: '1', hitsMin: '', hitsMax: ''
+  });
+  assert.equal(Math.min(...fireWeak.keys()), 180); // floor(190×0.95)
+  assert.equal(Math.min(...heatWeak.keys()), 171); // floor(180×0.95)
 }

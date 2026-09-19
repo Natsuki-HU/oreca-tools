@@ -153,18 +153,18 @@ export function calculateDamage(state) {
   traceBase.push(`アンデッド補正（×${state.undeadMultiplier}%） → ${damage}`);
 
   const preVariance = damage;
-  const minDelta = Number((BigInt(preVariance) * -50n) / 1000n);
-  const maxDelta = Number((BigInt(preVariance) * 50n) / 1000n);
 
-  let minHit = preVariance + minDelta;
-  let maxHit = preVariance + maxDelta;
+  // アプリ本体は「基礎ダメージ + 増減量」ではなく、
+  // 乱数係数950/1050を基礎ダメージへ直接乗算して整数化する。
+  let minHit = Number((BigInt(preVariance) * 950n) / 1000n);
+  let maxHit = Number((BigInt(preVariance) * 1050n) / 1000n);
 
   // 標準ダメージコアの1ヒット999上限。
   minHit = Math.min(minHit, 999);
   maxHit = Math.min(maxHit, 999);
 
-  const minTrace = [...traceBase, `最低乱数（-5.0%の増減量を0方向に整数化） → ${minHit}`];
-  const maxTrace = [...traceBase, `最高乱数（+5.0%の増減量を0方向に整数化） → ${maxHit}`];
+  const minTrace = [...traceBase, `最低乱数（×95.0%後に整数化） → ${minHit}`];
+  const maxTrace = [...traceBase, `最高乱数（×105.0%後に整数化） → ${maxHit}`];
 
   minHit = applyDefenseMods(minHit, state.defenseMods ?? [], minTrace);
   maxHit = applyDefenseMods(maxHit, state.defenseMods ?? [], maxTrace);
