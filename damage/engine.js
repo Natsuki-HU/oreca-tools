@@ -124,12 +124,12 @@ export function calculateDamage(state) {
   if (damage === null) throw new Error('アンデッド補正が不正です');
   traceBase.push(`アンデッド補正（×${state.undeadMultiplier}%） → ${damage}`);
 
-  const preRandom = damage;
-  const minDelta = Number((BigInt(preRandom) * -50n) / 1000n);
-  const maxDelta = Number((BigInt(preRandom) * 50n) / 1000n);
+  const preVariance = damage;
+  const minDelta = Number((BigInt(preVariance) * -50n) / 1000n);
+  const maxDelta = Number((BigInt(preVariance) * 50n) / 1000n);
 
-  let minHit = preRandom + minDelta;
-  let maxHit = preRandom + maxDelta;
+  let minHit = preVariance + minDelta;
+  let maxHit = preVariance + maxDelta;
 
   // 標準ダメージコアの1ヒット999上限。
   minHit = Math.min(minHit, 999);
@@ -146,7 +146,7 @@ export function calculateDamage(state) {
 
   return {
     atk,
-    preRandom,
+    preVariance,
     minHit,
     maxHit,
     totalMin: minHit * hits,

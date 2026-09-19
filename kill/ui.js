@@ -2,17 +2,105 @@ import { APP_VERSION } from '../assets/version.js';
 import {
   ALLY_EFFECT_TYPES,
   ATTACK_ATTRIBUTES,
-  DEFENDER_ATTRIBUTES,
+  ENEMY_ATTRIBUTE_OPTIONS,
   ENEMY_EFFECT_TYPES,
   cloneDefaultState,
   simulateKillProbability
 } from './engine.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.3';
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.2';
 const root = document.getElementById('killRoot');
 const resetButton = document.getElementById('resetButton');
 
 for (const el of document.querySelectorAll('[data-app-version]')) el.textContent = APP_VERSION;
+
+const ALLY_BUFF_TYPES = Object.freeze([['atkBuff', '攻撃力'], ['speedBuff', '素早さ']]);
+const ENEMY_BUFF_TYPES = Object.freeze([['enemyAtkBuff', '攻撃力'], ['enemySpeedBuff', '素早さ']]);
+
+const CHARACTER_PRESETS = Object.freeze([
+  { id: '', name: '選択なし', group: 'none', skill: '', attack: '0', speed: '0' },
+  { id: 'son_goku', name: '斉天大聖ソンゴクウ', group: 'general', skill: 'ロキブランド', attack: '84', speed: '78', kind: 'buff' },
+  { id: 'gyumao', name: '牛魔王', group: 'general', skill: '鬼の気合入れ', attack: '94', speed: '15', kind: 'buff' },
+  { id: 'sylph', name: 'シルフ', group: 'general', skill: 'こうげき！', attack: '31', speed: '42', kind: 'attack' },
+  { id: 'crow', name: 'カラス', group: 'general', skill: 'こうげき！', attack: '31', speed: '63', kind: 'attack' },
+  { id: 'platinum_drake', name: 'プラチナドレイク', group: 'general', skill: '竜のしっぽ', attack: '78', speed: '78', kind: 'attack' },
+  { id: 'clear_blue_dragon', name: 'クリア・ブルードラゴン', group: 'general', skill: 'アクアブレス', attack: '73', speed: '68', kind: 'attack' },
+  { id: 'bahamut', name: '天界竜バハムート', group: 'general', skill: 'シャイニングブレス', attack: '89', speed: '73', kind: 'attack' },
+  { id: 'mimitoshishi', name: 'ミミトシシ', group: 'general', skill: 'こうげき！', attack: '42', speed: '63', kind: 'attack' },
+  { id: 'dark_bahamut', name: '冥界竜ダークバハムート', group: 'general', skill: 'ブレス系統（敵属性で選択）', attack: '89', speed: '73', kind: 'attack' },
+  { id: 'magora', name: 'マゴラ', group: 'general', skill: 'さけぶ', attack: '36', speed: '57', kind: 'buff' },
+  { id: 'kerogon_green', name: 'ケロゴン(緑)', group: 'general', skill: '竜のしっぽ', attack: '31', speed: '52', kind: 'attack' },
+  { id: 'oniwaka_monk', name: '僧兵オニワカ', group: 'general', skill: '足ばらい', attack: '63', speed: '47', kind: 'attack' },
+  { id: 'oniwaka', name: 'オニワカ', group: 'general', skill: '足ばらい', attack: '57', speed: '42', kind: 'attack' },
+  { id: 'red_empress', name: '赤のエンプレス', group: 'general', skill: '行動スキップ', attack: '63', speed: '84', kind: 'skip' },
+  { id: 'raijin_kukulkan', name: '雷神竜ククルカン', group: 'general', skill: 'つつきまくり', attack: '78', speed: '89', kind: 'attack' },
+  { id: 'venom_behemoth', name: '猛毒竜ベヒモス', group: 'general', skill: 'おしつぶし', attack: '73', speed: '15', kind: 'attack' },
+  { id: 'heavy_behemoth', name: '重竜ベヒモス', group: 'general', skill: 'おしつぶし', attack: '63', speed: '10', kind: 'attack' },
+  { id: 'kerogon_yellow', name: 'ケロゴン(黄)', group: 'general', skill: '竜のしっぽ', attack: '31', speed: '21', kind: 'attack' },
+  { id: 'guardian_powan', name: '魔海の守護者ポワン', group: 'both', skill: 'シャボン・グラン', attack: '73', speed: '73', kind: 'attack' },
+  { id: 'kerogon_blue', name: 'ケロゴン(青)', group: 'general', skill: '竜のしっぽ', attack: '31', speed: '42', kind: 'attack' },
+  { id: 'dartan', name: '無幻銃士ダルタン', group: 'general', skill: '連撃', attack: '78', speed: '36', kind: 'attack' },
+  { id: 'kerogon_gold', name: 'ケロゴン(金)', group: 'general', skill: '竜のしっぽ', attack: '36', speed: '10', kind: 'attack' },
+  { id: 'camineko', name: 'キャミネコ', group: 'general', skill: 'ファイア！／アイス！／サンダー！（敵属性で選択）', attack: '42', speed: '68', kind: 'attack' },
+  { id: 'garanezumi', name: 'ガラネズミ', group: 'general', skill: 'こうげき！', attack: '31', speed: '73', kind: 'attack' },
+  { id: 'black_knight_gebolg', name: '黒騎士ゲボルグ', group: 'general', skill: 'ヒートウェイブ', attack: '74', speed: '31', kind: 'attack' },
+  { id: 'rakshasa', name: 'ラクシャーサ', group: 'general', skill: 'ヒートウェイブ', attack: '53', speed: '21', kind: 'attack' },
+  { id: 'scarlet_dragon', name: 'スカーレッド・ドラゴン', group: 'general', skill: '竜のしっぽ', attack: '89', speed: '47', kind: 'attack' },
+  { id: 'kenran_kukulkan', name: '絢蘭竜ククルカン', group: 'general', skill: 'つつきまくり', attack: '78', speed: '89', kind: 'attack' },
+  { id: 'shinjuryu_kukulkan', name: '神樹竜ククルカン', group: 'general', skill: 'つつきまくり', attack: '78', speed: '84', kind: 'attack' },
+  { id: 'ifrit', name: '大魔神イフリート', group: 'general', skill: 'ファイア‼︎', attack: '84', speed: '42', kind: 'attack' },
+  { id: 'astaroth', name: '魔公爵アスタロト', group: 'general', skill: 'メテオ！', attack: '68', speed: '31', kind: 'attack' },
+  { id: 'loki', name: 'ロキ', group: 'general', skill: 'ロキブランド', attack: '63', speed: '68', kind: 'buff' },
+  { id: 'toritamago', name: '魔王のトリタマゴ', group: 'condition', skill: 'こうげき！', attack: '1', speed: '1', kind: 'attack' },
+  { id: 'ares', name: '熱剣士アレス', group: 'condition', skill: 'こうげき！', attack: '73', speed: '21', kind: 'attack' },
+  { id: 'chibimuus', name: 'チビムウス', group: 'condition', skill: 'こうげき！', attack: '45', speed: '15', kind: 'attack' },
+  { id: 'lafroig', name: '魔皇ラフロイグ', group: 'condition', skill: 'こうげき！', attack: '94', speed: '57', kind: 'attack' },
+  { id: 'mermaid_mellow', name: 'マーメイドメロウ', group: 'condition', skill: 'こうげき！', attack: '68', speed: '73', kind: 'attack' },
+  { id: 'captain_azul', name: 'キャプテン・アズール', group: 'condition', skill: 'こうげき！', attack: '63', speed: '42', kind: 'attack' },
+  { id: 'elysion', name: '光王エーリュシオン', group: 'condition', skill: '行動スキップ', attack: '78', speed: '52', kind: 'skip', secondSkill: '浄化の炎', secondKind: 'attack' },
+  { id: 'hien', name: '剣豪ヒエン', group: 'condition', skill: '紫電', attack: '63', speed: '78', kind: 'attack' },
+  { id: 'marduk', name: '王子マルドク', group: 'condition', skill: '会心の一撃', attack: '79', speed: '95', kind: 'attack' },
+  { id: 'enki', name: '老将エンキ', group: 'condition', skill: '会心の一撃', attack: '78', speed: '57', kind: 'attack' },
+  { id: 'damkina', name: 'ダムキナ', group: 'condition', skill: 'ウィンド‼︎', attack: '68', speed: '89', kind: 'attack' },
+  { id: 'saezer', name: '棘騎士サエザー', group: 'condition', skill: 'こうげき！', attack: '68', speed: '52', kind: 'attack' },
+  { id: 'dante_magic_swordsman', name: '魔剣士ダンテ', group: 'condition', skill: 'こうげき！', attack: '68', speed: '31', kind: 'attack' },
+  { id: 'simon', name: 'シモン', group: 'condition', skill: 'こうげき！', attack: '68', speed: '47', kind: 'attack' },
+  { id: 'hayate', name: '風隠の戦士ハヤテ', group: 'condition', skill: 'こうげき！', attack: '57', speed: '84', kind: 'attack' },
+  { id: 'sky_clay', name: '天空騎士クレイ', group: 'condition', skill: 'こうげき！', attack: '73', speed: '73', kind: 'attack' },
+  { id: 'djinn', name: '大魔神ジン', group: 'condition', skill: 'ウィンド‼︎', attack: '63', speed: '84', kind: 'attack' },
+  { id: 'gate_dante', name: '魔界の門番ダンテ', group: 'condition', skill: 'こうげき！', attack: '78', speed: '36', kind: 'attack' },
+  { id: 'yamato', name: 'ヤマト', group: 'condition', skill: 'こうげき！', attack: '78', speed: '78', kind: 'attack' },
+  { id: 'susanoo', name: 'スサノヲ', group: 'condition', skill: 'こうげき！', attack: '73', speed: '78', kind: 'attack' },
+  { id: 'nanawarai', name: '魔王ナナワライ', group: 'condition', skill: 'こうげき！', attack: '84', speed: '63', kind: 'attack' },
+  { id: 'ginger_ale', name: '魔王ジンジャーエイル', group: 'condition', skill: 'こうげき！', attack: '84', speed: '52', kind: 'attack' },
+  { id: 'soccerra', name: '邪神サッカーラ', group: 'condition', skill: 'こうげき！', attack: '92', speed: '26', kind: 'attack' },
+  { id: 'fire_drake', name: '煌竜王ファイアドレイク', group: 'condition', skill: 'こうげき！', attack: '84', speed: '47', kind: 'attack' }
+]);
+
+const CHARACTER_BY_ID = new Map(CHARACTER_PRESETS.map(x => [x.id, x]));
+
+function defaultCharacterStats() {
+  return Object.fromEntries(
+    CHARACTER_PRESETS
+      .filter(x => x.id && x.attack !== undefined && x.speed !== undefined)
+      .map(x => [x.id, { attack: x.attack, speed: x.speed }])
+  );
+}
+
+function statusForCharacter(state, characterId) {
+  const preset = CHARACTER_BY_ID.get(characterId);
+  const saved = state.characterStats?.[characterId] ?? {};
+  return {
+    attack: preset?.attack ?? saved.attack ?? '',
+    speed: preset?.speed ?? saved.speed ?? ''
+  };
+}
+
+function defaultPrimaryBuff(side = 'ally') {
+  return side === 'enemy'
+    ? { type: 'enemyAtkBuff', mode: 'mult', value: '150', duration: '1' }
+    : { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' };
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -32,9 +120,13 @@ function normalizeState(saved) {
 
   const state = { ...fallback, ...saved };
   state.enemy = { ...fallback.enemy, ...(saved.enemy ?? {}) };
+  state.characterStats = { ...defaultCharacterStats(), ...(saved.characterStats ?? {}) };
   state.allyCount = Math.min(3, Math.max(1, Number(saved.allyCount) || fallback.allyCount));
-  state.allies = fallback.allies.map((ally, i) => ({ ...ally, ...(saved.allies?.[i] ?? {}) }));
+  state.allies = fallback.allies.map((ally, i) => ({ ...ally, ...(saved.allies?.[i] ?? {}), characterId: saved.allies?.[i]?.characterId ?? ally.characterId ?? '' }));
   state.turns = Array.isArray(saved.turns) && saved.turns.length ? saved.turns.slice(0, 12) : fallback.turns;
+
+  const allowedEnemyAttrs = new Set(ENEMY_ATTRIBUTE_OPTIONS.map(([value]) => value));
+  if (!allowedEnemyAttrs.has(state.enemy.attribute)) state.enemy.attribute = 'fire';
 
   for (const turn of state.turns) {
     turn.allyActions = Array.from({ length: 3 }, (_, i) => ({
@@ -42,12 +134,16 @@ function normalizeState(saved) {
       skillMultiplier: turn.allyActions?.[i]?.skillMultiplier ?? '200',
       attackAttribute: turn.allyActions?.[i]?.attackAttribute ?? 'none',
       hits: turn.allyActions?.[i]?.hits ?? '1',
-      effects: Array.isArray(turn.allyActions?.[i]?.effects) ? turn.allyActions[i].effects : []
+      buff: { ...defaultPrimaryBuff('ally'), ...(turn.allyActions?.[i]?.buff ?? {}) },
+      effects: Array.isArray(turn.allyActions?.[i]?.effects) ? turn.allyActions[i].effects : [],
+      skillName: turn.allyActions?.[i]?.skillName ?? ''
     }));
+    const legacyEnemyEffect = Array.isArray(turn.enemyAction?.effects) && turn.enemyAction.effects.length
+      ? turn.enemyAction.effects[0]
+      : turn.enemyAction?.kind === 'buff' ? turn.enemyAction?.buff : null;
     turn.enemyAction = {
       enabled: turn.enemyAction?.enabled !== false,
-      kind: turn.enemyAction?.kind ?? 'skip',
-      effects: Array.isArray(turn.enemyAction?.effects) ? turn.enemyAction.effects : []
+      effect: { type: 'none', target: 'all', mode: 'mult', value: '80', duration: '1', ...(turn.enemyAction?.effect ?? legacyEnemyEffect ?? {}) }
     };
   }
   return state;
@@ -57,7 +153,7 @@ function loadState() {
   try {
     return normalizeState(JSON.parse(localStorage.getItem(STORAGE_KEY)));
   } catch {
-    return cloneDefaultState();
+    return normalizeState(cloneDefaultState());
   }
 }
 
@@ -67,6 +163,42 @@ function saveState() {
 
 function optionsHtml(items, selected) {
   return items.map(([value, label]) => `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
+}
+
+function characterOptionsHtml(selected) {
+  const general = CHARACTER_PRESETS.filter(x => x.id && (x.group === 'general' || x.group === 'both'));
+  const condition = CHARACTER_PRESETS.filter(x => x.id && (x.group === 'condition' || x.group === 'both'));
+  const render = items => items.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === selected ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
+  return `<option value="" ${!selected ? 'selected' : ''}>選択なし</option><optgroup label="汎用">${render(general)}</optgroup><optgroup label="条件">${render(condition)}</optgroup>`;
+}
+
+function applyCharacterPreset(allyIndex, characterId) {
+  const preset = CHARACTER_BY_ID.get(characterId) ?? CHARACTER_BY_ID.get('');
+  const ally = state.allies[allyIndex];
+  ally.characterId = characterId;
+  const status = statusForCharacter(state, characterId);
+  ally.attack = status.attack || '0';
+  ally.speed = status.speed || '0';
+
+  state.turns.forEach((turn, turnIndex) => {
+    const action = turn.allyActions[allyIndex];
+    if (!characterId) {
+      action.kind = 'skip'; action.skillName = ''; action.effects = [];
+      return;
+    }
+    if (turnIndex === 0) {
+      action.kind = preset.kind ?? 'attack';
+      action.skillName = preset.skill;
+      if (characterId === 'son_goku') action.buff = { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '2' };
+      if (characterId === 'gyumao') action.buff = { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '1' };
+    } else if (preset.secondSkill && turnIndex === 1) {
+      action.kind = preset.secondKind ?? 'attack';
+      action.skillName = preset.secondSkill;
+    } else {
+      action.kind = 'same';
+      action.skillName = '';
+    }
+  });
 }
 
 function effectDefault(type, side) {
@@ -107,7 +239,7 @@ function effectFieldsHtml(effect, side) {
 
   const isTargeted = ['atkBuff', 'speedBuff', 'allyAtkDebuff', 'allySpeedDebuff'].includes(type);
   const target = isTargeted
-    ? `<select class="effect-target" aria-label="対象">${targetOptions(effect.target ?? (side === 'enemy' ? 'all' : 'self'))}</select>`
+    ? `<select class="effect-target" aria-label="対象">${targetOptions(effect.target ?? (side === 'enemy' ? 'all' : 'self'), side !== 'enemy')}</select>`
     : '';
   const modeControl = type === 'defenseDown'
     ? ''
@@ -143,6 +275,34 @@ function effectsHtml(effects, side, turnIndex, actorKey) {
     </div>`).join('');
 }
 
+function primaryBuffHtml(buff, side, disabled = false) {
+  const b = { ...defaultPrimaryBuff(side), ...(buff ?? {}) };
+  const types = side === 'enemy' ? ENEMY_BUFF_TYPES : ALLY_BUFF_TYPES;
+  const isAdd = b.mode === 'add';
+  const target = side === 'ally'
+    ? `<label class="mini-field"><span>対象</span><select class="main-buff-target" ${disabled ? 'disabled' : ''}>${targetOptions(b.target ?? 'self')}</select></label>`
+    : '';
+  return `
+    <div class="primary-buff-block">
+      <div class="sub-heading"><span>バフ内容</span></div>
+      <div class="primary-buff-grid">
+        <label class="mini-field"><span>能力</span><select class="main-buff-type" ${disabled ? 'disabled' : ''}>${optionsHtml(types, b.type)}</select></label>
+        ${target}
+        <label class="mini-field"><span>方式</span><select class="main-buff-mode" ${disabled ? 'disabled' : ''}><option value="mult" ${b.mode !== 'add' ? 'selected' : ''}>乗算</option><option value="add" ${b.mode === 'add' ? 'selected' : ''}>加算</option></select></label>
+        <label class="mini-field"><span>値</span><div class="input-with-suffix"><input class="main-buff-value" type="number" inputmode="decimal" step="0.1" value="${escapeHtml(b.value ?? (isAdd ? '50' : '150'))}" ${disabled ? 'disabled' : ''}><span class="suffix">${isAdd ? '' : '%'}</span></div></label>
+        <label class="mini-field"><span>継続</span><div class="input-with-suffix"><input class="main-buff-duration" type="number" inputmode="numeric" min="1" max="99" step="1" value="${escapeHtml(b.duration ?? '1')}" ${disabled ? 'disabled' : ''}><span class="suffix">ターン</span></div></label>
+      </div>
+    </div>`;
+}
+
+function actionKindOptions(action, turnIndex) {
+  return `
+    <option value="attack" ${action.kind === 'attack' ? 'selected' : ''}>攻撃</option>
+    <option value="buff" ${action.kind === 'buff' ? 'selected' : ''}>バフ</option>
+    ${turnIndex > 0 ? `<option value="same" ${action.kind === 'same' ? 'selected' : ''}>同行動</option>` : ''}
+    <option value="skip" ${action.kind === 'skip' ? 'selected' : ''}>行動スキップ</option>`;
+}
+
 function actionCardHtml(action, turnIndex, allyIndex) {
   const actorKey = `ally${allyIndex}`;
   return `
@@ -150,18 +310,19 @@ function actionCardHtml(action, turnIndex, allyIndex) {
       <div class="action-card-head">
         <strong>キャラ${allyIndex + 1}</strong>
         <select class="action-kind" aria-label="キャラ${allyIndex + 1}の基本行動">
-          <option value="attack" ${action.kind === 'attack' ? 'selected' : ''}>攻撃</option>
-          <option value="buff" ${action.kind === 'buff' ? 'selected' : ''}>バフ</option>
-          <option value="skip" ${action.kind === 'skip' ? 'selected' : ''}>行動スキップ</option>
+          ${actionKindOptions(action, turnIndex)}
         </select>
       </div>
+      ${action.kind !== 'same' ? `<label class="mini-field skill-name-field"><span>使用技</span><input class="skill-name" type="text" value="${escapeHtml(action.skillName ?? '')}" placeholder="技名"></label>` : ''}
       ${action.kind === 'attack' ? `
         <div class="action-input-grid">
           <label class="mini-field"><span>技倍率</span><div class="input-with-suffix"><input class="skill-multiplier" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(action.skillMultiplier)}"><span class="suffix">%</span></div></label>
           <label class="mini-field"><span>技属性</span><select class="attack-attribute">${optionsHtml(ATTACK_ATTRIBUTES, action.attackAttribute)}</select></label>
           <label class="mini-field"><span>ヒット数</span><input class="hit-count" type="number" inputmode="numeric" step="1" min="1" max="50" value="${escapeHtml(action.hits)}"></label>
         </div>` : ''}
-      ${action.kind !== 'skip' ? `
+      ${action.kind === 'buff' ? primaryBuffHtml(action.buff, 'ally') : ''}
+      ${action.kind === 'same' ? '<p class="same-action-note">前回の同モンスターの行動内容をそのまま使用します。</p>' : ''}
+      ${action.kind === 'attack' || action.kind === 'buff' ? `
         <div class="effects-block">
           <div class="sub-heading"><span>追加効果</span><button type="button" class="mini-add add-effect" data-side="ally">＋追加</button></div>
           <div class="effects-list">${effectsHtml(action.effects ?? [], 'ally', turnIndex, actorKey)}</div>
@@ -169,8 +330,28 @@ function actionCardHtml(action, turnIndex, allyIndex) {
     </div>`;
 }
 
+function enemyEffectFieldsHtml(effect, enabled) {
+  const disabled = enabled ? '' : 'disabled';
+  if (!effect || effect.type === 'none' || effect.type === 'same') return '';
+  if (effect.type === 'heal') {
+    return `<div class="enemy-effect-fields">
+      <label class="mini-field"><span>回復方法</span><select class="enemy-effect-mode" ${disabled}><option value="flat" ${effect.mode !== 'maxPercent' ? 'selected' : ''}>固定値</option><option value="maxPercent" ${effect.mode === 'maxPercent' ? 'selected' : ''}>最大HP%</option></select></label>
+      <label class="mini-field"><span>回復量</span><input class="enemy-effect-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(effect.value ?? '200')}" ${disabled}></label>
+    </div>`;
+  }
+  const targeted = effect.type === 'allyAtkDebuff' || effect.type === 'allySpeedDebuff';
+  const defaultValue = effect.type === 'enemyDefenseBuff' ? '80' : (targeted ? '80' : '150');
+  return `<div class="enemy-effect-fields">
+    ${targeted ? `<label class="mini-field"><span>対象</span><select class="enemy-effect-target" ${disabled}>${targetOptions(effect.target ?? 'all', false)}</select></label>` : ''}
+    <label class="mini-field"><span>方式</span><select class="enemy-effect-mode" ${disabled}><option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>乗算</option><option value="add" ${effect.mode === 'add' ? 'selected' : ''}>加算</option></select></label>
+    <label class="mini-field"><span>値</span><div class="input-with-suffix"><input class="enemy-effect-value" type="number" inputmode="decimal" step="0.1" value="${escapeHtml(effect.value ?? defaultValue)}" ${disabled}><span class="suffix">${effect.mode === 'add' ? '' : '%'}</span></div></label>
+    <label class="mini-field"><span>継続</span><div class="input-with-suffix"><input class="enemy-effect-duration" type="number" inputmode="numeric" min="1" max="99" step="1" value="${escapeHtml(effect.duration ?? '1')}" ${disabled}><span class="suffix">ターン</span></div></label>
+  </div>`;
+}
+
 function enemyActionHtml(action, turnIndex) {
-  const actorKey = 'enemy';
+  const effect = action.effect ?? { type: 'none' };
+  const choices = turnIndex > 0 ? [...ENEMY_EFFECT_TYPES, ['same', '同行動']] : ENEMY_EFFECT_TYPES;
   return `
     <div class="action-card enemy-action-card" data-turn-index="${turnIndex}" data-actor-key="enemy">
       <div class="action-card-head enemy-head">
@@ -178,18 +359,10 @@ function enemyActionHtml(action, turnIndex) {
         <label class="toggle-line"><input class="enemy-enabled" type="checkbox" ${action.enabled ? 'checked' : ''}> このターン行動する</label>
       </div>
       <div class="enemy-action-body ${action.enabled ? '' : 'is-disabled'}">
-        <label class="mini-field"><span>基本行動</span>
-          <select class="action-kind enemy-kind" ${action.enabled ? '' : 'disabled'}>
-            <option value="attack" ${action.kind === 'attack' ? 'selected' : ''}>攻撃</option>
-            <option value="buff" ${action.kind === 'buff' ? 'selected' : ''}>バフ</option>
-            <option value="skip" ${action.kind === 'skip' ? 'selected' : ''}>行動スキップ</option>
-          </select>
+        <label class="mini-field"><span>敵行動効果</span>
+          <select class="enemy-effect-type" ${action.enabled ? '' : 'disabled'}>${optionsHtml(choices, effect.type)}</select>
         </label>
-        <div class="effects-block">
-          <div class="sub-heading"><span>敵の追加効果</span><button type="button" class="mini-add add-effect" data-side="enemy" ${action.enabled && action.kind !== 'skip' ? '' : 'disabled'}>＋追加</button></div>
-          <div class="effects-list">${effectsHtml(action.effects ?? [], 'enemy', turnIndex, actorKey)}</div>
-        </div>
-        <p class="inline-note">敵の攻撃ダメージそのものは未計算です。敵の追加効果だけを撃破確率に反映します。</p>
+        ${enemyEffectFieldsHtml(effect, action.enabled)}
       </div>
       <p class="inline-note poison-note">敵行動OFFでも、この敵の行動タイミングで毒・猛毒ダメージは発生します。</p>
     </div>`;
@@ -270,7 +443,7 @@ function render() {
       <h2>敵</h2>
       <div class="field-grid three-col">
         <label class="field"><span class="field-label">HP</span><input id="enemyHp" type="number" inputmode="numeric" min="1" step="1" value="${escapeHtml(state.enemy.maxHp)}"></label>
-        <label class="field"><span class="field-label">属性</span><select id="enemyAttribute">${optionsHtml(DEFENDER_ATTRIBUTES, state.enemy.attribute)}</select></label>
+        <label class="field"><span class="field-label">属性</span><select id="enemyAttribute">${optionsHtml(ENEMY_ATTRIBUTE_OPTIONS, state.enemy.attribute)}</select></label>
         <label class="field"><span class="field-label">素早さ</span><input id="enemySpeed" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(state.enemy.speed)}"></label>
       </div>
     </section>
@@ -284,6 +457,7 @@ function render() {
         ${Array.from({ length: state.allyCount }, (_, i) => `
           <div class="ally-card" data-ally-index="${i}">
             <strong>キャラ${i + 1}</strong>
+            <label class="mini-field"><span>モンスター</span><select class="ally-character">${characterOptionsHtml(state.allies[i].characterId ?? '')}</select></label>
             <label class="mini-field"><span>攻撃力</span><input class="ally-attack" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(state.allies[i].attack)}"></label>
             <label class="mini-field"><span>素早さ</span><input class="ally-speed" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(state.allies[i].speed)}"></label>
           </div>`).join('')}
@@ -316,8 +490,10 @@ function collectStateFromDom() {
 
   root.querySelectorAll('.ally-card').forEach(card => {
     const i = Number(card.dataset.allyIndex);
+    state.allies[i].characterId = card.querySelector('.ally-character')?.value ?? state.allies[i].characterId ?? '';
     state.allies[i].attack = card.querySelector('.ally-attack')?.value ?? state.allies[i].attack;
     state.allies[i].speed = card.querySelector('.ally-speed')?.value ?? state.allies[i].speed;
+    rememberCharacterStats(state.allies[i]);
   });
 
   root.querySelectorAll('.action-card').forEach(card => {
@@ -328,8 +504,17 @@ function collectStateFromDom() {
     if (actorKey === 'enemy') {
       const action = state.turns[turnIndex].enemyAction;
       action.enabled = card.querySelector('.enemy-enabled')?.checked ?? action.enabled;
-      action.kind = card.querySelector('.action-kind')?.value ?? action.kind;
-      action.effects = collectEffects(card);
+      const type = card.querySelector('.enemy-effect-type')?.value ?? action.effect?.type ?? 'none';
+      const effect = { type };
+      const target = card.querySelector('.enemy-effect-target')?.value;
+      const mode = card.querySelector('.enemy-effect-mode')?.value;
+      const value = card.querySelector('.enemy-effect-value')?.value;
+      const duration = card.querySelector('.enemy-effect-duration')?.value;
+      if (target !== undefined) effect.target = target;
+      if (mode !== undefined) effect.mode = mode;
+      if (value !== undefined) effect.value = value;
+      if (duration !== undefined) effect.duration = duration;
+      action.effect = effect;
     } else {
       const allyIndex = Number(actorKey.replace('ally', ''));
       const action = state.turns[turnIndex].allyActions[allyIndex];
@@ -337,9 +522,25 @@ function collectStateFromDom() {
       action.skillMultiplier = card.querySelector('.skill-multiplier')?.value ?? action.skillMultiplier;
       action.attackAttribute = card.querySelector('.attack-attribute')?.value ?? action.attackAttribute;
       action.hits = card.querySelector('.hit-count')?.value ?? action.hits;
+      action.skillName = card.querySelector('.skill-name')?.value ?? action.skillName ?? '';
+      action.buff = collectPrimaryBuff(card, 'ally', action.buff);
       action.effects = collectEffects(card);
     }
   });
+}
+
+function collectPrimaryBuff(card, side, current) {
+  const type = card.querySelector('.main-buff-type')?.value;
+  if (type === undefined) return current ?? defaultPrimaryBuff(side);
+  const buff = {
+    type,
+    mode: card.querySelector('.main-buff-mode')?.value ?? 'mult',
+    value: card.querySelector('.main-buff-value')?.value ?? '150',
+    duration: card.querySelector('.main-buff-duration')?.value ?? '1'
+  };
+  const target = card.querySelector('.main-buff-target')?.value;
+  if (target !== undefined) buff.target = target;
+  return buff;
 }
 
 function collectEffects(card) {
@@ -356,6 +557,15 @@ function collectEffects(card) {
     if (duration !== undefined) effect.duration = duration;
     return effect;
   });
+}
+
+function rememberCharacterStats(ally) {
+  if (!ally?.characterId) return;
+  if (!state.characterStats) state.characterStats = defaultCharacterStats();
+  const attack = ally.attack ?? '';
+  const speed = ally.speed ?? '';
+  if (attack === '' && speed === '') return;
+  state.characterStats[ally.characterId] = { attack, speed };
 }
 
 function saveAndRender() {
@@ -383,15 +593,24 @@ root.addEventListener('input', event => {
 
 root.addEventListener('change', event => {
   if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLSelectElement)) return;
-  collectStateFromDom();
+  if (event.target.classList.contains('ally-character')) {
+    const card = event.target.closest('.ally-card');
+    const allyIndex = Number(card?.dataset.allyIndex);
+    if (Number.isInteger(allyIndex)) applyCharacterPreset(allyIndex, event.target.value);
+  } else {
+    collectStateFromDom();
+  }
 
   // 表示項目が変わる選択は全体を再描画。
   if (
     event.target.id === 'allyCount' ||
     event.target.classList.contains('action-kind') ||
     event.target.classList.contains('enemy-enabled') ||
+    event.target.classList.contains('enemy-effect-type') ||
+    event.target.classList.contains('ally-character') ||
     event.target.classList.contains('effect-type') ||
-    event.target.classList.contains('effect-mode')
+    event.target.classList.contains('effect-mode') ||
+    event.target.classList.contains('main-buff-mode')
   ) {
     saveAndRender();
   } else {
@@ -457,7 +676,7 @@ root.addEventListener('click', event => {
 });
 
 resetButton.addEventListener('click', () => {
-  state = cloneDefaultState();
+  state = normalizeState(cloneDefaultState());
   saveState();
   render();
 });

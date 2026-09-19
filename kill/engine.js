@@ -1,9 +1,14 @@
-// 撃破確率シミュレータ v0.3.0
-// 現段階の仕様を検証しやすいよう、外部ライブラリなしで完結させています。
+// 撃破確率シミュレータ v0.4.2
+// 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([
   ['none', '無'], ['fire', '火'], ['water', '水'], ['earth', '土'],
   ['wind', '風'], ['light', '光'], ['dark', '闇']
+]);
+
+// 撃破確率ページで選択できる敵属性。敵には無・光・闇属性は存在しないため除外。
+export const ENEMY_ATTRIBUTE_OPTIONS = Object.freeze([
+  ['fire', '火'], ['water', '水'], ['earth', '土'], ['wind', '風']
 ]);
 
 export const ATTACK_ATTRIBUTES = Object.freeze([
@@ -43,14 +48,26 @@ export const ALLY_EFFECT_TYPES = Object.freeze([
 ]);
 
 export const ENEMY_EFFECT_TYPES = Object.freeze([
-  ['allyAtkDebuff', '味方の攻撃力デバフ'],
-  ['allySpeedDebuff', '味方の素早さデバフ'],
-  ['enemySpeedBuff', '敵の素早さバフ'],
-  ['enemyAtkBuff', '敵の攻撃力バフ'],
+  ['none', '効果なし'],
+  ['allyAtkDebuff', '攻撃デバフ'],
+  ['allySpeedDebuff', '素早さデバフ'],
+  ['enemyAtkBuff', '敵の攻撃アップ'],
+  ['enemyDefenseBuff', '敵の防御アップ'],
+  ['enemySpeedBuff', '敵の素早さアップ'],
   ['heal', '回復']
 ]);
 
-const DEFAULT_ALLY = Object.freeze({ attack: '84', speed: '80' });
+function defaultAllyBuff() {
+  return { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' };
+}
+
+function defaultEnemyBuff() {
+  return { type: 'enemyAtkBuff', mode: 'mult', value: '150', duration: '1' };
+}
+
+function defaultEnemyEffect() {
+  return { type: 'none', target: 'all', mode: 'mult', value: '80', duration: '1' };
+}
 
 function defaultAttackAction() {
   return {
@@ -58,25 +75,88 @@ function defaultAttackAction() {
     skillMultiplier: '200',
     attackAttribute: 'none',
     hits: '1',
+    buff: defaultAllyBuff(),
     effects: []
   };
 }
 
 function defaultSkipAction() {
-  return { kind: 'skip', skillMultiplier: '200', attackAttribute: 'none', hits: '1', effects: [] };
+  return { kind: 'skip', skillMultiplier: '200', attackAttribute: 'none', hits: '1', buff: defaultAllyBuff(), effects: [] };
 }
 
 export const DEFAULT_STATE = Object.freeze({
-  enemy: { maxHp: '1000', attribute: 'none', speed: '80' },
+  enemy: { maxHp: '1500', attribute: 'fire', speed: '45' },
+  characterStats: {
+    son_goku: { attack: '84', speed: '78' },
+    gyumao: { attack: '94', speed: '15' },
+    sylph: { attack: '31', speed: '42' },
+    crow: { attack: '31', speed: '63' },
+    platinum_drake: { attack: '78', speed: '78' },
+    clear_blue_dragon: { attack: '73', speed: '68' },
+    bahamut: { attack: '89', speed: '73' },
+    mimitoshishi: { attack: '42', speed: '63' },
+    dark_bahamut: { attack: '89', speed: '73' },
+    magora: { attack: '36', speed: '57' },
+    kerogon_green: { attack: '31', speed: '52' },
+    oniwaka_monk: { attack: '63', speed: '47' },
+    oniwaka: { attack: '57', speed: '42' },
+    red_empress: { attack: '63', speed: '84' },
+    raijin_kukulkan: { attack: '78', speed: '89' },
+    venom_behemoth: { attack: '73', speed: '15' },
+    heavy_behemoth: { attack: '63', speed: '10' },
+    kerogon_yellow: { attack: '31', speed: '21' },
+    guardian_powan: { attack: '73', speed: '73' },
+    kerogon_blue: { attack: '31', speed: '42' },
+    dartan: { attack: '78', speed: '36' },
+    kerogon_gold: { attack: '36', speed: '10' },
+    camineko: { attack: '42', speed: '68' },
+    garanezumi: { attack: '31', speed: '73' },
+    black_knight_gebolg: { attack: '74', speed: '31' },
+    rakshasa: { attack: '53', speed: '21' },
+    scarlet_dragon: { attack: '89', speed: '47' },
+    kenran_kukulkan: { attack: '78', speed: '89' },
+    shinjuryu_kukulkan: { attack: '78', speed: '84' },
+    ifrit: { attack: '84', speed: '42' },
+    astaroth: { attack: '68', speed: '31' },
+    loki: { attack: '63', speed: '68' },
+    toritamago: { attack: '1', speed: '1' },
+    ares: { attack: '73', speed: '21' },
+    chibimuus: { attack: '45', speed: '15' },
+    lafroig: { attack: '94', speed: '57' },
+    mermaid_mellow: { attack: '68', speed: '73' },
+    captain_azul: { attack: '63', speed: '42' },
+    elysion: { attack: '78', speed: '52' },
+    hien: { attack: '63', speed: '78' },
+    marduk: { attack: '79', speed: '95' },
+    enki: { attack: '78', speed: '57' },
+    damkina: { attack: '68', speed: '89' },
+    saezer: { attack: '68', speed: '52' },
+    dante_magic_swordsman: { attack: '68', speed: '31' },
+    simon: { attack: '68', speed: '47' },
+    hayate: { attack: '57', speed: '84' },
+    sky_clay: { attack: '73', speed: '73' },
+    djinn: { attack: '63', speed: '84' },
+    gate_dante: { attack: '78', speed: '36' },
+    yamato: { attack: '78', speed: '78' },
+    susanoo: { attack: '73', speed: '78' },
+    nanawarai: { attack: '84', speed: '63' },
+    ginger_ale: { attack: '84', speed: '52' },
+    soccerra: { attack: '92', speed: '26' },
+    fire_drake: { attack: '84', speed: '47' }
+  },
   allyCount: 3,
   allies: [
-    { ...DEFAULT_ALLY, speed: '100' },
-    { ...DEFAULT_ALLY, speed: '80' },
-    { ...DEFAULT_ALLY, speed: '60' }
+    { characterId: 'son_goku', attack: '84', speed: '78' },
+    { characterId: 'gyumao', attack: '94', speed: '15' },
+    { characterId: '', attack: '0', speed: '0' }
   ],
   turns: [{
-    allyActions: [defaultAttackAction(), defaultAttackAction(), defaultAttackAction()],
-    enemyAction: { enabled: true, kind: 'skip', effects: [] }
+    allyActions: [
+      { ...defaultAttackAction(), kind: 'buff', skillName: 'ロキブランド', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '2' } },
+      { ...defaultAttackAction(), kind: 'buff', skillName: '鬼の気合入れ', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '1' } },
+      { ...defaultSkipAction(), skillName: '' }
+    ],
+    enemyAction: { enabled: true, effect: defaultEnemyEffect() }
   }]
 });
 
@@ -278,6 +358,9 @@ function enemyEffect(runtime, effect, hpDist) {
     case 'enemyAtkBuff':
       addTimedMod(runtime.enemy.attackMods, effect, runtime.seq);
       return hpDist;
+    case 'enemyDefenseBuff':
+      addTimedMod(runtime.enemy.defenseMods, effect, runtime.seq);
+      return hpDist;
     case 'heal': {
       const value = parseNumber(effect.value ?? '0', '回復量', { min: 0 });
       const mode = effect.mode ?? 'flat';
@@ -334,14 +417,32 @@ function recordTimeline(timeline, label, hpDist, turn, kind) {
   });
 }
 
-function ensureAction(action) {
+function ensureAction(action, side = 'ally') {
+  const defaultBuff = side === 'enemy' ? defaultEnemyBuff() : defaultAllyBuff();
   return {
     kind: action?.kind ?? 'skip',
     skillMultiplier: action?.skillMultiplier ?? '200',
     attackAttribute: action?.attackAttribute ?? 'none',
     hits: action?.hits ?? '1',
-    effects: Array.isArray(action?.effects) ? action.effects : []
+    buff: { ...defaultBuff, ...(action?.buff ?? {}) },
+    effects: Array.isArray(action?.effects) ? action.effects : [],
+    skillName: action?.skillName ?? ''
   };
+}
+
+function resolveAction(turns, turnIndex, side, actorIndex = -1) {
+  let index = turnIndex;
+  let repeated = false;
+  while (index >= 0) {
+    const raw = side === 'enemy'
+      ? turns[index]?.enemyAction
+      : turns[index]?.allyActions?.[actorIndex];
+    const action = ensureAction(raw, side);
+    if (action.kind !== 'same') return { action, repeated };
+    repeated = true;
+    index -= 1;
+  }
+  return { action: ensureAction({ kind: 'skip' }, side), repeated: true };
 }
 
 export function simulateKillProbability(state) {
@@ -383,7 +484,9 @@ export function simulateKillProbability(state) {
       const actor = order[pos];
 
       if (actor.side === 'ally') {
-        const action = ensureAction(turn.allyActions?.[actor.index]);
+        const resolved = resolveAction(turns, turnIndex, 'ally', actor.index);
+        const action = resolved.action;
+        const samePrefix = resolved.repeated ? '同行動→' : '';
         if (action.kind === 'attack') {
           const attack = applyMods(
             runtime.allies[actor.index].baseAttack,
@@ -399,23 +502,37 @@ export function simulateKillProbability(state) {
             hits: action.hits
           });
           hpDist = applyAttackToHp(hpDist, damageDist);
-          recordTimeline(timeline, `キャラ${actor.index + 1} 攻撃`, hpDist, turnIndex + 1, 'attack');
+          recordTimeline(timeline, `キャラ${actor.index + 1} ${samePrefix}攻撃`, hpDist, turnIndex + 1, 'attack');
         } else if (action.kind === 'buff') {
-          recordTimeline(timeline, `キャラ${actor.index + 1} バフ`, hpDist, turnIndex + 1, 'buff');
+          allyEffect(runtime, action.buff, actor.index);
+          recordTimeline(timeline, `キャラ${actor.index + 1} ${samePrefix}バフ`, hpDist, turnIndex + 1, 'buff');
         } else {
-          recordTimeline(timeline, `キャラ${actor.index + 1} 行動スキップ`, hpDist, turnIndex + 1, 'skip');
+          recordTimeline(timeline, `キャラ${actor.index + 1} ${samePrefix}行動スキップ`, hpDist, turnIndex + 1, 'skip');
         }
 
         if (action.kind !== 'skip') {
           for (const effect of action.effects) allyEffect(runtime, effect, actor.index);
         }
       } else {
-        const enemyAction = turn.enemyAction ?? { enabled: false, kind: 'skip', effects: [] };
-        if (enemyAction.enabled) {
-          if (enemyAction.kind !== 'skip') {
-            for (const effect of (enemyAction.effects ?? [])) hpDist = enemyEffect(runtime, effect, hpDist);
+        const rawEnemyAction = turn.enemyAction ?? { enabled: false, effect: { type: 'none' } };
+        let effect = rawEnemyAction.effect ?? { type: 'none' };
+        let repeated = false;
+        if (effect.type === 'same') {
+          repeated = true;
+          for (let i = turnIndex - 1; i >= 0; i--) {
+            const prev = turns[i]?.enemyAction?.effect;
+            if (prev && prev.type !== 'same') { effect = prev; break; }
           }
-          recordTimeline(timeline, `敵 ${enemyAction.kind === 'attack' ? '攻撃' : enemyAction.kind === 'buff' ? 'バフ' : '行動スキップ'}`, hpDist, turnIndex + 1, 'enemy');
+          if (effect.type === 'same') effect = { type: 'none' };
+        }
+        if (rawEnemyAction.enabled !== false) {
+          hpDist = enemyEffect(runtime, effect, hpDist);
+          const labelMap = {
+            none: '効果なし', allyAtkDebuff: '攻撃デバフ', allySpeedDebuff: '素早さデバフ',
+            enemyAtkBuff: '敵の攻撃アップ', enemyDefenseBuff: '敵の防御アップ',
+            enemySpeedBuff: '敵の素早さアップ', heal: '回復'
+          };
+          recordTimeline(timeline, `敵 ${repeated ? '同行動→' : ''}${labelMap[effect.type] ?? '効果なし'}`, hpDist, turnIndex + 1, 'enemy');
         } else {
           recordTimeline(timeline, '敵 行動OFF', hpDist, turnIndex + 1, 'enemyOff');
         }

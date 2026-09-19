@@ -42,7 +42,7 @@ run('複合属性は順次切り捨て', state => {
   state.attackPower = '101';
   state.attributeMultipliers = ['150', '105'];
 }, {
-  preRandom: 158,
+  preVariance: 158,
   minHit: 151,
   maxHit: 165
 });
@@ -54,7 +54,7 @@ run('攻撃補正は上から順に適用', state => {
   ];
 }, {
   atk: 180,
-  preRandom: 180
+  preVariance: 180
 });
 
 run('防御補正→ダメージ軽減', state => {

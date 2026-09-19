@@ -65,3 +65,83 @@ function approx(actual, expected, eps = 1e-10) {
 }
 
 console.log('kill-engine tests: OK');
+
+// 5) v0.4.0 のデフォルト値。
+{
+  const s = cloneDefaultState();
+  assert.equal(s.enemy.maxHp, '1500');
+  assert.equal(s.enemy.attribute, 'fire');
+  assert.equal(s.enemy.speed, '45');
+  assert.deepEqual(s.allies, [
+    { characterId: 'son_goku', attack: '84', speed: '78' },
+    { characterId: 'gyumao', attack: '94', speed: '15' },
+    { characterId: '', attack: '0', speed: '0' }
+  ]);
+  assert.equal(s.turns[0].allyActions[0].skillName, 'ロキブランド');
+  assert.equal(s.turns[0].allyActions[1].skillName, '鬼の気合入れ');
+}
+
+// 6) 基本行動「バフ」の主効果が次ターンの攻撃に反映される。
+{
+  const s = cloneDefaultState();
+  s.allyCount = 1;
+  s.enemy.maxHp = '160';
+  s.enemy.speed = '10';
+  s.allies[0].attack = '84';
+  s.allies[0].speed = '100';
+  s.turns[0].allyActions[0] = {
+    kind: 'buff', skillMultiplier: '200', attackAttribute: 'none', hits: '1',
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '2' },
+    effects: []
+  };
+  s.turns[0].enemyAction.enabled = false;
+  s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));
+  s.turns[1].allyActions[0] = {
+    kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1',
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' },
+    effects: []
+  };
+  const r = simulateKillProbability(s);
+  approx(r.killChance, 1);
+}
+
+// 7) 「同行動」は前回の同モンスターの具体的な行動を再利用する。
+{
+  const base = cloneDefaultState();
+  base.allyCount = 1;
+  base.enemy.maxHp = '250';
+  base.enemy.speed = '10';
+  base.allies[0].attack = '84';
+  base.allies[0].speed = '100';
+  base.turns[0].allyActions[0] = {
+    kind: 'attack', skillMultiplier: '150', attackAttribute: 'none', hits: '1',
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' },
+    effects: []
+  };
+  base.turns[0].enemyAction.enabled = false;
+  base.turns.push(JSON.parse(JSON.stringify(base.turns[0])));
+
+  const explicit = JSON.parse(JSON.stringify(base));
+  const same = JSON.parse(JSON.stringify(base));
+  same.turns[1].allyActions[0].kind = 'same';
+
+  const a = simulateKillProbability(explicit);
+  const b = simulateKillProbability(same);
+  approx(a.killChance, b.killChance);
+  assert.deepEqual([...a.hpDistribution.entries()], [...b.hpDistribution.entries()]);
+}
+
+
+// 8) 敵の防御アップは被ダメージ倍率として攻撃ダメージを減らす。
+{
+  const base = cloneDefaultState();
+  base.allyCount = 1;
+  base.enemy.maxHp = '90';
+  base.enemy.speed = '100';
+  base.allies[0].attack = '100';
+  base.allies[0].speed = '10';
+  base.turns[0].enemyAction = { enabled: true, effect: { type: 'enemyDefenseBuff', mode: 'mult', value: '50', duration: '1' } };
+  base.turns[0].allyActions[0] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
+  const r = simulateKillProbability(base);
+  approx(r.killChance, 0);
+}

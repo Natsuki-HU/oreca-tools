@@ -233,7 +233,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .enemy-action-card { background: color-mix(in srgb, var(--panel) 94%, var(--accent) 6%); }
 .enemy-head { align-items: center; }
 .toggle-line { display: flex; gap: 7px; align-items: center; color: var(--muted); font-size: 12px; }
-.toggle-line input { width: 18px; min-height: 18px; }
+.toggle-line input { width: auto; min-height: 0; margin: 0; }
 .enemy-action-body.is-disabled { opacity: .48; }
 .inline-note { font-size: 11px; }
 .poison-note { margin-top: 9px; }
@@ -263,3 +263,34 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
   .effect-note { grid-column: 1; }
   .turn-add-row { flex-direction: column; }
 }
+
+/* v0.3.1: 撃破確率計算のバフ内容・同行動 */
+.primary-buff-block {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--panel) 96%, var(--accent) 4%);
+}
+.primary-buff-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.same-action-note {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+@media (max-width: 760px) {
+  .primary-buff-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .primary-buff-grid { grid-template-columns: 1fr; }
+}
+
+.skill-name-field { margin-top: 10px; }
+.enemy-effect-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+@media (max-width: 720px) { .enemy-effect-fields { grid-template-columns: repeat(2, minmax(0,1fr)); } }
