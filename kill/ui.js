@@ -16,9 +16,11 @@ import {
   presetIdForSkillName
 } from './presets.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.4.7';
-const PREVIOUS_STORAGE_KEY = 'oreca-tools.kill.v0.4.6';
-const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.5', 'oreca-tools.kill.v0.4.4', 'oreca-tools.kill.v0.4.3', 'oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.9';
+// v0.4.5～v0.4.8 は攻撃力バフの乗算値を「増加量」で保存（50 = ×1.5）。
+// v0.4.9 からはダメージ計算と同じく最終倍率を直接保存（150 = ×1.5）。
+const AMOUNT_STORAGE_KEYS = ['oreca-tools.kill.v0.4.8', 'oreca-tools.kill.v0.4.7', 'oreca-tools.kill.v0.4.6', 'oreca-tools.kill.v0.4.5'];
+const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.4', 'oreca-tools.kill.v0.4.3', 'oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
 const root = document.getElementById('killRoot');
 const resetButton = document.getElementById('resetButton');
 
@@ -108,8 +110,8 @@ function statusForCharacter(state, characterId) {
 
 function defaultPrimaryBuff(side = 'ally') {
   return side === 'enemy'
-    ? { type: 'enemyAtkBuff', mode: 'mult', value: '50', duration: '1' }
-    : { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' };
+    ? { type: 'enemyAtkBuff', mode: 'mult', value: '150', duration: '1' }
+    : { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' };
 }
 
 function escapeHtml(value) {
@@ -147,7 +149,24 @@ function migrateLegacyActionAmounts(action) {
   return next;
 }
 
-function normalizeState(saved, legacyAmounts = false) {
+function migrateAttackBuffNotation(effect) {
+  if (!effect || typeof effect !== 'object') return effect;
+  if (!['atkBuff', 'enemyAtkBuff'].includes(effect.type) || effect.mode === 'add') return effect;
+  const next = { ...effect };
+  const n = Number(next.value);
+  if (Number.isFinite(n)) next.value = String(100 + n);
+  return next;
+}
+
+function migrateActionAttackBuffNotation(action) {
+  if (!action || typeof action !== 'object') return action;
+  const next = { ...action };
+  if (next.buff) next.buff = migrateAttackBuffNotation(next.buff);
+  if (Array.isArray(next.effects)) next.effects = next.effects.map(migrateAttackBuffNotation);
+  return next;
+}
+
+function normalizeState(saved, legacyAmounts = false, attackBuffAmountNotation = false) {
   const fallback = cloneDefaultState();
   if (!saved || typeof saved !== 'object') return fallback;
 
@@ -166,7 +185,8 @@ function normalizeState(saved, legacyAmounts = false) {
   for (const turn of state.turns) {
     turn.allyActions = Array.from({ length: 3 }, (_, i) => {
       const originalRaw = turn.allyActions?.[i] ?? {};
-      const raw = legacyAmounts ? migrateLegacyActionAmounts(originalRaw) : originalRaw;
+      const amountNormalizedRaw = legacyAmounts ? migrateLegacyActionAmounts(originalRaw) : originalRaw;
+      const raw = attackBuffAmountNotation ? migrateActionAttackBuffNotation(amountNormalizedRaw) : amountNormalizedRaw;
       const presetId = raw.skillPresetId ?? presetIdForSkillName(raw.skillName ?? '');
       const normalized = {
         kind: raw.kind ?? 'skip',
@@ -195,7 +215,12 @@ function normalizeState(saved, legacyAmounts = false) {
     const legacyEnemyEffect = Array.isArray(turn.enemyAction?.effects) && turn.enemyAction.effects.length
       ? turn.enemyAction.effects[0]
       : turn.enemyAction?.kind === 'buff' ? turn.enemyAction?.buff : null;
-    const migratedEnemyEffect = legacyAmounts ? migrateLegacyEffectAmount(turn.enemyAction?.effect ?? legacyEnemyEffect) : (turn.enemyAction?.effect ?? legacyEnemyEffect);
+    const amountNormalizedEnemyEffect = legacyAmounts
+      ? migrateLegacyEffectAmount(turn.enemyAction?.effect ?? legacyEnemyEffect)
+      : (turn.enemyAction?.effect ?? legacyEnemyEffect);
+    const migratedEnemyEffect = attackBuffAmountNotation
+      ? migrateAttackBuffNotation(amountNormalizedEnemyEffect)
+      : amountNormalizedEnemyEffect;
     turn.enemyAction = {
       enabled: turn.enemyAction?.enabled !== false,
       effect: { type: 'none', target: 'all', mode: 'mult', value: '20', duration: '1', ...(migratedEnemyEffect ?? {}) }
@@ -207,12 +232,14 @@ function normalizeState(saved, legacyAmounts = false) {
 function loadState() {
   try {
     const current = localStorage.getItem(STORAGE_KEY);
-    if (current) return normalizeState(JSON.parse(current), false);
-    const previous = localStorage.getItem(PREVIOUS_STORAGE_KEY);
-    if (previous) return normalizeState(JSON.parse(previous), false);
+    if (current) return normalizeState(JSON.parse(current), false, false);
+    for (const key of AMOUNT_STORAGE_KEYS) {
+      const previous = localStorage.getItem(key);
+      if (previous) return normalizeState(JSON.parse(previous), false, true);
+    }
     for (const key of LEGACY_STORAGE_KEYS) {
       const legacy = localStorage.getItem(key);
-      if (legacy) return normalizeState(JSON.parse(legacy), true);
+      if (legacy) return normalizeState(JSON.parse(legacy), true, true);
     }
     return normalizeState(cloneDefaultState());
   } catch {
@@ -354,10 +381,12 @@ function effectDefault(type, side) {
       return { type, target: 'all', mode: 'mult', value: '20', duration: '1' };
     }
     if (type === 'enemyDefenseBuff') return { type, mode: 'mult', value: '20', duration: '1' };
+    if (type === 'enemyAtkBuff') return { type, mode: 'mult', value: '150', duration: '1' };
     return { type, mode: 'mult', value: '50', duration: '1' };
   }
   if (type === 'defenseDown') return { type, mode: 'mult', value: '20', duration: '1' };
   if (type === 'speedDown') return { type, mode: 'mult', value: '20', duration: '1' };
+  if (type === 'atkBuff') return { type, target: 'self', mode: 'mult', value: '150', duration: '1' };
   return { type, target: 'self', mode: 'mult', value: '50', duration: '1' };
 }
 
@@ -392,7 +421,7 @@ function targetSelectHtml(selected, actorIndex = 0, className = 'effect-target-s
   const current = targetCode(selected, actorIndex);
   const selectedCode = choices.includes(current) ? current : choices[0];
   return `<select class="${className} target-select" aria-label="対象" ${disabled ? 'disabled' : ''}>
-    ${choices.map(code => `<option value="${code}" ${code === selectedCode ? 'selected' : ''}>${[...code].join(',')}</option>`).join('')}
+    ${choices.map(code => `<option value="${code}" ${code === selectedCode ? 'selected' : ''}>${[...code].join('/')}</option>`).join('')}
   </select>`;
 }
 
@@ -426,13 +455,18 @@ function effectFieldsHtml(effect, side, actorIndex = 0) {
   const target = isTargeted
     ? targetSelectHtml(effect.target ?? (side === 'enemy' ? 'all' : 'self'), actorIndex)
     : '';
+  const isAttackBuff = type === 'atkBuff' || type === 'enemyAtkBuff';
+  const multModeLabel = isAttackBuff ? '乗算' : '割合';
+  const addModeLabel = isAttackBuff ? '加算' : '固定値';
   const modeControl = type === 'defenseDown'
     ? ''
     : `<select class="effect-mode" aria-label="補正方式">
-        <option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>割合</option>
-        <option value="add" ${effect.mode === 'add' ? 'selected' : ''}>固定値</option>
+        <option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>${multModeLabel}</option>
+        <option value="add" ${effect.mode === 'add' ? 'selected' : ''}>${addModeLabel}</option>
       </select>`;
   const isAdd = type !== 'defenseDown' && effect.mode === 'add';
+  const showPlus = isAdd && ['atkBuff', 'speedBuff', 'enemyAtkBuff', 'enemySpeedBuff'].includes(type);
+  const valueSuffix = isAdd ? (isAttackBuff ? 'ATK' : '') : '%';
 
   const expiryLabel = effect.expiry === 'sourceNextActionStart'
     ? '使用者の次の行動開始まで'
@@ -447,9 +481,10 @@ function effectFieldsHtml(effect, side, actorIndex = 0) {
   return `
     ${target}
     ${modeControl}
-    <div class="input-with-suffix compact-input">
+    <div class="input-with-suffix compact-input ${showPlus ? 'has-prefix' : ''}">
+      ${showPlus ? '<span class="input-prefix">+</span>' : ''}
       <input class="effect-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(effect.value ?? '0')}" aria-label="効果量" />
-      <span class="suffix">${isAdd ? '' : '%'}</span>
+      ${valueSuffix ? `<span class="suffix">${valueSuffix}</span>` : ''}
     </div>
     ${durationControl}`;
 }
@@ -471,6 +506,12 @@ function primaryBuffHtml(buff, side, disabled = false, actorIndex = 0) {
   const b = { ...defaultPrimaryBuff(side), ...(buff ?? {}) };
   const types = side === 'enemy' ? ENEMY_BUFF_TYPES : ALLY_BUFF_TYPES;
   const isAdd = b.mode === 'add';
+  const isAttackBuff = b.type === 'atkBuff' || b.type === 'enemyAtkBuff';
+  const showPlus = isAdd;
+  const valueLabel = isAttackBuff ? (isAdd ? '加算値' : '倍率') : '効果量';
+  const valueSuffix = isAdd ? (isAttackBuff ? 'ATK' : '') : '%';
+  const multModeLabel = isAttackBuff ? '乗算' : '割合';
+  const addModeLabel = isAttackBuff ? '加算' : '固定値';
   const target = side === 'ally'
     ? `<label class="mini-field target-field"><span>対象</span>${targetSelectHtml(b.target ?? 'self', actorIndex, 'main-buff-target-select', disabled)}</label>`
     : '';
@@ -480,8 +521,8 @@ function primaryBuffHtml(buff, side, disabled = false, actorIndex = 0) {
       <div class="primary-buff-grid">
         <label class="mini-field"><span>能力</span><select class="main-buff-type" ${disabled ? 'disabled' : ''}>${optionsHtml(types, b.type)}</select></label>
         ${target}
-        <label class="mini-field"><span>方式</span><select class="main-buff-mode" ${disabled ? 'disabled' : ''}><option value="mult" ${b.mode !== 'add' ? 'selected' : ''}>割合</option><option value="add" ${b.mode === 'add' ? 'selected' : ''}>固定値</option></select></label>
-        <label class="mini-field"><span>効果量</span><div class="input-with-suffix"><input class="main-buff-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(b.value ?? (isAdd ? '50' : '50'))}" ${disabled ? 'disabled' : ''}><span class="suffix">${isAdd ? '' : '%'}</span></div></label>
+        <label class="mini-field"><span>方式</span><select class="main-buff-mode" ${disabled ? 'disabled' : ''}><option value="mult" ${b.mode !== 'add' ? 'selected' : ''}>${multModeLabel}</option><option value="add" ${b.mode === 'add' ? 'selected' : ''}>${addModeLabel}</option></select></label>
+        <label class="mini-field"><span>${valueLabel}</span><div class="input-with-suffix ${showPlus ? 'has-prefix' : ''}">${showPlus ? '<span class="input-prefix">+</span>' : ''}<input class="main-buff-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(b.value ?? (isAttackBuff && !isAdd ? '150' : '50'))}" ${disabled ? 'disabled' : ''}>${valueSuffix ? `<span class="suffix">${valueSuffix}</span>` : ''}</div></label>
         <label class="mini-field"><span>継続</span><div class="input-with-suffix"><input class="main-buff-duration" type="number" inputmode="numeric" min="1" max="99" step="1" value="${escapeHtml(b.duration ?? '1')}" ${disabled ? 'disabled' : ''}><span class="suffix">ターン</span></div></label>
       </div>
     </div>`;
@@ -547,11 +588,18 @@ function enemyEffectFieldsHtml(effect, enabled) {
     </div>`;
   }
   const targeted = effect.type === 'allyAtkDebuff' || effect.type === 'allySpeedDebuff';
-  const defaultValue = '20';
+  const isAttackBuff = effect.type === 'enemyAtkBuff';
+  const isAdd = effect.mode === 'add';
+  const defaultValue = isAttackBuff && !isAdd ? '150' : '20';
+  const multModeLabel = isAttackBuff ? '乗算' : '割合';
+  const addModeLabel = isAttackBuff ? '加算' : '固定値';
+  const valueLabel = isAttackBuff ? (isAdd ? '加算値' : '倍率') : '効果量';
+  const valueSuffix = isAdd ? (isAttackBuff ? 'ATK' : '') : '%';
+  const showPlus = isAdd && (effect.type === 'enemyAtkBuff' || effect.type === 'enemySpeedBuff');
   return `<div class="enemy-effect-fields">
     ${targeted ? `<label class="mini-field target-field"><span>対象</span>${targetSelectHtml(effect.target ?? 'all', 0, 'enemy-effect-target-select', !enabled)}</label>` : ''}
-    <label class="mini-field"><span>方式</span><select class="enemy-effect-mode" ${disabled}><option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>割合</option><option value="add" ${effect.mode === 'add' ? 'selected' : ''}>固定値</option></select></label>
-    <label class="mini-field"><span>効果量</span><div class="input-with-suffix"><input class="enemy-effect-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(effect.value ?? defaultValue)}" ${disabled}><span class="suffix">${effect.mode === 'add' ? '' : '%'}</span></div></label>
+    <label class="mini-field"><span>方式</span><select class="enemy-effect-mode" ${disabled}><option value="mult" ${!isAdd ? 'selected' : ''}>${multModeLabel}</option><option value="add" ${isAdd ? 'selected' : ''}>${addModeLabel}</option></select></label>
+    <label class="mini-field"><span>${valueLabel}</span><div class="input-with-suffix ${showPlus ? 'has-prefix' : ''}">${showPlus ? '<span class="input-prefix">+</span>' : ''}<input class="enemy-effect-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(effect.value ?? defaultValue)}" ${disabled}>${valueSuffix ? `<span class="suffix">${valueSuffix}</span>` : ''}</div></label>
     <label class="mini-field"><span>継続</span><div class="input-with-suffix"><input class="enemy-effect-duration" type="number" inputmode="numeric" min="1" max="99" step="1" value="${escapeHtml(effect.duration ?? '1')}" ${disabled}><span class="suffix">ターン</span></div></label>
   </div>`;
 }

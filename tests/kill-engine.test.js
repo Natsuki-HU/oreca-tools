@@ -79,7 +79,9 @@ console.log('kill-engine tests: OK');
     { characterId: '', attack: '0', speed: '0' }
   ]);
   assert.equal(s.turns[0].allyActions[0].skillName, 'ロキブランド');
+  assert.equal(s.turns[0].allyActions[0].buff.value, '150');
   assert.equal(s.turns[0].allyActions[1].skillName, '鬼の気合入れ');
+  assert.equal(s.turns[0].allyActions[1].buff.value, '200');
 }
 
 // 6) 基本行動「バフ」の主効果が次ターンの攻撃に反映される。
@@ -92,14 +94,14 @@ console.log('kill-engine tests: OK');
   s.allies[0].speed = '100';
   s.turns[0].allyActions[0] = {
     kind: 'buff', skillMultiplier: '200', attackAttribute: 'none', hits: '1',
-    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '100', duration: '2' },
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '2' },
     effects: []
   };
   s.turns[0].enemyAction.enabled = false;
   s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));
   s.turns[1].allyActions[0] = {
     kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1',
-    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' },
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' },
     effects: []
   };
   const r = simulateKillProbability(s);
@@ -116,7 +118,7 @@ console.log('kill-engine tests: OK');
   base.allies[0].speed = '100';
   base.turns[0].allyActions[0] = {
     kind: 'attack', skillMultiplier: '150', attackAttribute: 'none', hits: '1',
-    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' },
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' },
     effects: []
   };
   base.turns[0].enemyAction.enabled = false;
@@ -229,6 +231,11 @@ console.log('kill-engine tests: OK');
   assert.equal(suck.kind, 'buff');
   assert.deepEqual(suck.buff, { type: 'atkBuff', target: 'self', mode: 'add', value: '15', duration: '3' });
 
+  const loki = SKILL_PRESET_BY_ID.get('loki_brand');
+  assert.deepEqual(loki.buff, { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '2' });
+  const gaze = SKILL_PRESET_BY_ID.get('sea_king_gaze');
+  assert.deepEqual(gaze.buff, { type: 'atkBuff', target: 'self', mode: 'add', value: '30', duration: '99' });
+
   const bite = SKILL_PRESET_BY_ID.get('poison_bite');
   assert.deepEqual([bite.skillMultiplier, bite.attackAttribute, bite.attackType], ['140', 'poison', 'physical']);
   assert.deepEqual(bite.effects, [{ type: 'poison' }]);
@@ -261,23 +268,39 @@ console.log('kill-engine tests: OK');
 }
 
 
-// 15) バフ/デバフの割合入力は「効果量」。アップ20→×120%、ダウン20→×80%。
+// 15) 攻撃力バフはダメージ計算と同じ表記。乗算150%=×1.5、加算+30=ATK+30。
 {
-  const s = cloneDefaultState();
-  s.allyCount = 1;
-  s.enemy.maxHp = '115';
-  s.enemy.speed = '10';
-  s.allies[0].attack = '100';
-  s.allies[0].speed = '100';
-  s.turns[0].allyActions[0] = {
+  const mult = cloneDefaultState();
+  mult.allyCount = 1;
+  mult.enemy.maxHp = '145';
+  mult.enemy.speed = '10';
+  mult.allies[0].attack = '100';
+  mult.allies[0].speed = '100';
+  mult.turns[0].allyActions[0] = {
     kind: 'buff', skillMultiplier: '100', attackAttribute: 'none', hits: '1',
-    buff: { type: 'atkBuff', target: ['ally1'], mode: 'mult', value: '20', duration: '2' }, effects: []
+    buff: { type: 'atkBuff', target: ['ally1'], mode: 'mult', value: '150', duration: '2' }, effects: []
   };
-  s.turns[0].enemyAction.enabled = false;
-  s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));
-  s.turns[1].allyActions[0] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
-  const r = simulateKillProbability(s);
-  assert.ok(r.killChance > 0);
+  mult.turns[0].enemyAction.enabled = false;
+  mult.turns.push(JSON.parse(JSON.stringify(mult.turns[0])));
+  mult.turns[1].allyActions[0] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
+  const multResult = simulateKillProbability(mult);
+  assert.ok(multResult.killChance > 0);
+
+  const add = cloneDefaultState();
+  add.allyCount = 1;
+  add.enemy.maxHp = '125';
+  add.enemy.speed = '10';
+  add.allies[0].attack = '100';
+  add.allies[0].speed = '100';
+  add.turns[0].allyActions[0] = {
+    kind: 'buff', skillMultiplier: '100', attackAttribute: 'none', hits: '1',
+    buff: { type: 'atkBuff', target: ['ally1'], mode: 'add', value: '30', duration: '2' }, effects: []
+  };
+  add.turns[0].enemyAction.enabled = false;
+  add.turns.push(JSON.parse(JSON.stringify(add.turns[0])));
+  add.turns[1].allyActions[0] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
+  const addResult = simulateKillProbability(add);
+  assert.ok(addResult.killChance > 0);
 }
 
 // 16) バフ対象は配列で複数指定できる。
@@ -288,7 +311,7 @@ console.log('kill-engine tests: OK');
   s.enemy.speed = '10';
   s.allies[0].attack = '1'; s.allies[0].speed = '100';
   s.allies[1].attack = '100'; s.allies[1].speed = '90';
-  s.turns[0].allyActions[0] = { kind: 'buff', buff: { type: 'atkBuff', target: ['ally1','ally2'], mode: 'mult', value: '100', duration: '2' }, effects: [] };
+  s.turns[0].allyActions[0] = { kind: 'buff', buff: { type: 'atkBuff', target: ['ally1','ally2'], mode: 'mult', value: '200', duration: '2' }, effects: [] };
   s.turns[0].allyActions[1] = { kind: 'skip', effects: [] };
   s.turns[0].enemyAction.enabled = false;
   s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));

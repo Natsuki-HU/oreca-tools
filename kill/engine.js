@@ -1,4 +1,4 @@
-// 撃破確率シミュレータ v0.4.7
+// 撃破確率シミュレータ v0.4.9
 // 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([
@@ -68,11 +68,11 @@ export const ENEMY_EFFECT_TYPES = Object.freeze([
 ]);
 
 function defaultAllyBuff() {
-  return { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' };
+  return { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' };
 }
 
 function defaultEnemyBuff() {
-  return { type: 'enemyAtkBuff', mode: 'mult', value: '50', duration: '1' };
+  return { type: 'enemyAtkBuff', mode: 'mult', value: '150', duration: '1' };
 }
 
 function defaultEnemyEffect() {
@@ -176,8 +176,8 @@ export const DEFAULT_STATE = Object.freeze({
   ],
   turns: [{
     allyActions: [
-      { ...defaultAttackAction(), kind: 'buff', skillName: 'ロキブランド', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '2' } },
-      { ...defaultAttackAction(), kind: 'buff', skillName: '鬼の気合入れ', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '100', duration: '1' } },
+      { ...defaultAttackAction(), kind: 'buff', skillName: 'ロキブランド', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '2' } },
+      { ...defaultAttackAction(), kind: 'buff', skillName: '鬼の気合入れ', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '1' } },
       { ...defaultSkipAction(), skillName: '' }
     ],
     enemyAction: { enabled: true, effect: defaultEnemyEffect() }
@@ -389,6 +389,13 @@ function effectAmountToMod(effect, defaultMode = 'mult') {
   const mode = effect.mode ?? defaultMode;
   const direction = effectDirection(effect.type);
   if (mode === 'add') return { mode, value: direction * amount };
+
+  // 攻撃力アップはダメージ計算ツールと同じ表記:
+  // 150% = ×1.5、200% = ×2.0。
+  // 攻撃デバフや防御・素早さ補正は従来どおり「効果量」入力。
+  if (effect.type === 'atkBuff' || effect.type === 'enemyAtkBuff') {
+    return { mode: 'mult', value: amount };
+  }
   return { mode: 'mult', value: 100 + direction * amount };
 }
 
