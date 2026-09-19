@@ -235,13 +235,15 @@ function characterOptionsHtml(selected) {
   return `<option value="" ${!selected ? 'selected' : ''}>選択なし</option><optgroup label="汎用">${render(general)}</optgroup><optgroup label="条件">${render(condition)}</optgroup>`;
 }
 
+const SKIP_ACTION_PRESET = '__skip_action__';
+
 function skillPresetOptionsHtml(selected) {
   const major = SKILL_PRESETS.filter(x => x.selectable !== false && x.major === true);
   const buffs = major.filter(x => x.majorGroup === 'buff');
   const attacks = major.filter(x => x.majorGroup === 'attack');
   const others = major.filter(x => x.majorGroup === 'other');
   const render = items => items.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === selected ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
-  return `<option value="" ${!selected ? 'selected' : ''}>手動入力</option><optgroup label="バフ・強化技">${render(buffs)}</optgroup><optgroup label="攻撃技">${render(attacks)}</optgroup><optgroup label="その他">${render(others)}</optgroup>`;
+  return `<option value="" ${!selected ? 'selected' : ''}>手動入力</option><option value="${SKIP_ACTION_PRESET}" ${selected === SKIP_ACTION_PRESET ? 'selected' : ''}>行動スキップ</option><optgroup label="バフ・強化技">${render(buffs)}</optgroup><optgroup label="攻撃技">${render(attacks)}</optgroup><optgroup label="その他">${render(others)}</optgroup>`;
 }
 
 function resetAttackPresetFields(action) {
@@ -261,8 +263,15 @@ function resetAttackPresetFields(action) {
 }
 
 function applySkillPresetToAction(action, presetId) {
-  const skill = SKILL_PRESET_BY_ID.get(presetId);
   action.skillPresetId = presetId || '';
+  if (presetId === SKIP_ACTION_PRESET) {
+    action.kind = 'skip';
+    action.skillName = '行動スキップ';
+    action.effects = [];
+    action.presetNote = '';
+    return;
+  }
+  const skill = SKILL_PRESET_BY_ID.get(presetId);
   if (!skill) return;
 
   action.kind = skill.kind;
@@ -383,7 +392,7 @@ function targetSelectHtml(selected, actorIndex = 0, className = 'effect-target-s
   const current = targetCode(selected, actorIndex);
   const selectedCode = choices.includes(current) ? current : choices[0];
   return `<select class="${className} target-select" aria-label="対象" ${disabled ? 'disabled' : ''}>
-    ${choices.map(code => `<option value="${code}" ${code === selectedCode ? 'selected' : ''}>${code}</option>`).join('')}
+    ${choices.map(code => `<option value="${code}" ${code === selectedCode ? 'selected' : ''}>${[...code].join(',')}</option>`).join('')}
   </select>`;
 }
 
