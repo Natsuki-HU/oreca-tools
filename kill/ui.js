@@ -13,11 +13,12 @@ import {
   SKILL_PRESETS,
   SKILL_PRESET_BY_ID,
   caminekoPresetForEnemy,
+  darkBahamutPresetForEnemy,
   presetIdForSkillName
 } from './presets.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.4.10';
-const DIRECT_STORAGE_KEYS = ['oreca-tools.kill.v0.4.9'];
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.11';
+const DIRECT_STORAGE_KEYS = ['oreca-tools.kill.v0.4.10', 'oreca-tools.kill.v0.4.9'];
 // v0.4.5～v0.4.8 は攻撃力バフの乗算値を「増加量」で保存（50 = ×1.5）。
 // v0.4.9 からはダメージ計算と同じく最終倍率を直接保存（150 = ×1.5）。
 const AMOUNT_STORAGE_KEYS = ['oreca-tools.kill.v0.4.8', 'oreca-tools.kill.v0.4.7', 'oreca-tools.kill.v0.4.6', 'oreca-tools.kill.v0.4.5'];
@@ -69,7 +70,7 @@ const CHARACTER_PRESETS = Object.freeze([
   { id: 'chibimuus', name: 'チビムウス', group: 'condition', skill: 'こうげき！', attack: '45', speed: '15', kind: 'attack' },
   { id: 'lafroig', name: '魔皇ラフロイグ', group: 'condition', skill: 'こうげき！', attack: '94', speed: '57', kind: 'attack' },
   { id: 'mermaid_mellow', name: 'マーメイドメロウ', group: 'condition', skill: 'こうげき！', attack: '68', speed: '73', kind: 'attack' },
-  { id: 'captain_azul', name: 'キャプテン・アズール', group: 'condition', skill: 'こうげき！', attack: '63', speed: '42', kind: 'attack' },
+  { id: 'captain_azul', name: 'キャプテン・アズール', group: 'condition', skill: 'シビレ斬り', attack: '63', speed: '42', kind: 'attack' },
   { id: 'elysion', name: '光王エーリュシオン', group: 'condition', skill: '行動スキップ', attack: '78', speed: '52', kind: 'skip', secondSkill: '浄化の炎', secondKind: 'attack' },
   { id: 'hien', name: '剣豪ヒエン', group: 'condition', skill: '紫電', attack: '63', speed: '78', kind: 'attack' },
   { id: 'marduk', name: '王子マルドク', group: 'condition', skill: '会心の一撃', attack: '79', speed: '95', kind: 'attack' },
@@ -89,6 +90,46 @@ const CHARACTER_PRESETS = Object.freeze([
   { id: 'soccerra', name: '邪神サッカーラ', group: 'condition', skill: 'こうげき！', attack: '92', speed: '26', kind: 'attack' },
   { id: 'fire_drake', name: '煌竜王ファイアドレイク', group: 'condition', skill: 'こうげき！', attack: '84', speed: '47', kind: 'attack' }
 ]);
+
+// Wiki「バトル入手チャート」2ページでの採用・登場頻度を基準にした表示順。
+// 同系統のキャラは近接配置し、同程度のものは従来順を尊重する。
+const CHARACTER_USAGE_ORDER = Object.freeze([
+  'son_goku','gyumao','loki','kerogon_green','camineko','magora','guardian_powan','dark_bahamut',
+  'oniwaka_monk','clear_blue_dragon','dartan','kerogon_yellow','kerogon_blue','kerogon_gold',
+  'raijin_kukulkan','kenran_kukulkan','shinjuryu_kukulkan','venom_behemoth','heavy_behemoth',
+  'red_empress','oniwaka','platinum_drake','scarlet_dragon','sylph','crow','garanezumi','ifrit',
+  'black_knight_gebolg','rakshasa','bahamut','mimitoshishi','astaroth',
+  // 条件枠
+  'captain_azul','toritamago','elysion','hien','fire_drake','nanawarai','ginger_ale','lafroig',
+  'ares','chibimuus','mermaid_mellow','marduk','enki','damkina','saezer','dante_magic_swordsman',
+  'simon','hayate','sky_clay','djinn','gate_dante','yamato','susanoo','soccerra'
+]);
+const CHARACTER_USAGE_RANK = new Map(CHARACTER_USAGE_ORDER.map((id, i) => [id, i]));
+
+// 技もカテゴリ内で使用頻度順。忍法・ポイント・属性ブレス等の同系統は連続配置する。
+const SKILL_USAGE_ORDER = Object.freeze([
+  // バフ・強化
+  'loki_brand','oni_spirit','spirit_blessing','sea_king_gaze','growl','sun_hymn','name_announcement','sword_dance','suck_dry',
+  // 攻撃
+  'crush',
+  'ninja_fire','ninja_water','ninja_wind',
+  'red_point_2','blue_point_2','yellow_point_2','green_point_2',
+  'peck_many','self_destruct',
+  'fire2','fire3','aqua2','aqua3','wind2',
+  'wet_slicer',
+  'red_fire_breath','blue_aqua_breath','yellow_earth_breath','green_air_breath',
+  'rock_throw','dark_fire','venom_salamanda','bubble_grand','rengeki','roaring_lightning',
+  'fire_torture','water_torture','tatsumaki','kamaitachi','rain_god_spear','marking_arrow','paralysis_arrow',
+  'poison_crush','deadly_blow','ikazuchi','fire_ice_breath2','shout','headwind','heat_wave','ice_storm_strike',
+  'poison_bite','melting_breath',
+  // その他
+  'epidemic_glass'
+]);
+const SKILL_USAGE_RANK = new Map(SKILL_USAGE_ORDER.map((id, i) => [id, i]));
+
+function sortByUsage(items, rankMap) {
+  return [...items].sort((a, b) => (rankMap.get(a.id) ?? 9999) - (rankMap.get(b.id) ?? 9999));
+}
 
 const CHARACTER_BY_ID = new Map(CHARACTER_PRESETS.map(x => [x.id, x]));
 
@@ -188,7 +229,15 @@ function normalizeState(saved, legacyAmounts = false, attackBuffAmountNotation =
       const originalRaw = turn.allyActions?.[i] ?? {};
       const amountNormalizedRaw = legacyAmounts ? migrateLegacyActionAmounts(originalRaw) : originalRaw;
       const raw = attackBuffAmountNotation ? migrateActionAttackBuffNotation(amountNormalizedRaw) : amountNormalizedRaw;
-      const presetId = raw.skillPresetId ?? presetIdForSkillName(raw.skillName ?? '');
+      const legacyPresetMap = {
+        red_point_0: 'red_point_2', red_point_1: 'red_point_2',
+        blue_point_0: 'blue_point_2', blue_point_1: 'blue_point_2',
+        yellow_point_0: 'yellow_point_2', yellow_point_1: 'yellow_point_2',
+        green_point_0: 'green_point_2', green_point_1: 'green_point_2',
+        dark_bahamut_breath: darkBahamutPresetForEnemy(state.enemy.attribute)
+      };
+      const rawPresetId = raw.skillPresetId ?? presetIdForSkillName(raw.skillName ?? '');
+      const presetId = legacyPresetMap[rawPresetId] ?? rawPresetId;
       const normalized = {
         kind: raw.kind ?? 'skip',
         skillPresetId: presetId,
@@ -205,12 +254,14 @@ function normalizeState(saved, legacyAmounts = false, attackBuffAmountNotation =
         undeadSkillMultiplier: raw.undeadSkillMultiplier ?? '',
         poisonedSkillMultiplier: raw.poisonedSkillMultiplier ?? '',
         deadlyPoisonSkillMultiplier: raw.deadlyPoisonSkillMultiplier ?? '',
+        weakDefenderAttribute: raw.weakDefenderAttribute ?? '',
+        weakSkillMultiplier: raw.weakSkillMultiplier ?? '',
         buff: { ...defaultPrimaryBuff('ally'), ...(raw.buff ?? {}) },
         effects: Array.isArray(raw.effects) ? raw.effects : [],
         skillName: raw.skillName ?? ''
       };
       // v0.4.2以前にはskillPresetIdが無かったため、既知技は一度だけプリセット値へ移行する。
-      if (raw.skillPresetId === undefined && presetId) applySkillPresetToAction(normalized, presetId);
+      if ((raw.skillPresetId === undefined || rawPresetId !== presetId) && presetId) applySkillPresetToAction(normalized, presetId);
       return normalized;
     });
     const legacyEnemyEffect = Array.isArray(turn.enemyAction?.effects) && turn.enemyAction.effects.length
@@ -261,8 +312,8 @@ function optionsHtml(items, selected) {
 }
 
 function characterOptionsHtml(selected) {
-  const general = CHARACTER_PRESETS.filter(x => x.id && (x.group === 'general' || x.group === 'both'));
-  const condition = CHARACTER_PRESETS.filter(x => x.id && (x.group === 'condition' || x.group === 'both'));
+  const general = sortByUsage(CHARACTER_PRESETS.filter(x => x.id && (x.group === 'general' || x.group === 'both')), CHARACTER_USAGE_RANK);
+  const condition = sortByUsage(CHARACTER_PRESETS.filter(x => x.id && (x.group === 'condition' || x.group === 'both')), CHARACTER_USAGE_RANK);
   const render = items => items.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === selected ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
   return `<option value="" ${!selected ? 'selected' : ''}>選択なし</option><optgroup label="汎用">${render(general)}</optgroup><optgroup label="条件">${render(condition)}</optgroup>`;
 }
@@ -271,9 +322,9 @@ const SKIP_ACTION_PRESET = '__skip_action__';
 
 function skillPresetOptionsHtml(selected) {
   const major = SKILL_PRESETS.filter(x => x.selectable !== false && x.major === true);
-  const buffs = major.filter(x => x.majorGroup === 'buff');
-  const attacks = major.filter(x => x.majorGroup === 'attack');
-  const others = major.filter(x => x.majorGroup === 'other');
+  const buffs = sortByUsage(major.filter(x => x.majorGroup === 'buff'), SKILL_USAGE_RANK);
+  const attacks = sortByUsage(major.filter(x => x.majorGroup === 'attack'), SKILL_USAGE_RANK);
+  const others = sortByUsage(major.filter(x => x.majorGroup === 'other'), SKILL_USAGE_RANK);
   const render = items => items.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === selected ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
   return `<option value="" ${!selected ? 'selected' : ''}>手動入力</option><option value="${SKIP_ACTION_PRESET}" ${selected === SKIP_ACTION_PRESET ? 'selected' : ''}>行動スキップ</option><optgroup label="バフ・強化技">${render(buffs)}</optgroup><optgroup label="攻撃技">${render(attacks)}</optgroup><optgroup label="その他">${render(others)}</optgroup>`;
 }
@@ -292,6 +343,8 @@ function resetAttackPresetFields(action) {
   action.undeadSkillMultiplier = '';
   action.poisonedSkillMultiplier = '';
   action.deadlyPoisonSkillMultiplier = '';
+  action.weakDefenderAttribute = '';
+  action.weakSkillMultiplier = '';
 }
 
 function applySkillPresetToAction(action, presetId) {
@@ -326,6 +379,8 @@ function applySkillPresetToAction(action, presetId) {
     action.undeadSkillMultiplier = skill.undeadSkillMultiplier ?? '';
     action.poisonedSkillMultiplier = skill.poisonedSkillMultiplier ?? '';
     action.deadlyPoisonSkillMultiplier = skill.deadlyPoisonSkillMultiplier ?? '';
+    action.weakDefenderAttribute = skill.weakDefenderAttribute ?? '';
+    action.weakSkillMultiplier = skill.weakSkillMultiplier ?? '';
   } else if (skill.kind === 'buff') {
     action.buff = deepClone(skill.buff ?? defaultPrimaryBuff('ally'));
   }
@@ -333,7 +388,7 @@ function applySkillPresetToAction(action, presetId) {
 
 function presetIdForCharacterSkill(characterId, skillName) {
   if (characterId === 'camineko') return caminekoPresetForEnemy(state.enemy.attribute);
-  if (characterId === 'dark_bahamut') return 'dark_bahamut_breath';
+  if (characterId === 'dark_bahamut') return darkBahamutPresetForEnemy(state.enemy.attribute);
   return presetIdForSkillName(skillName);
 }
 
@@ -886,6 +941,14 @@ root.addEventListener('change', event => {
     const card = event.target.closest('.enemy-action-card');
     const turnIndex = Number(card?.dataset.turnIndex);
     if (Number.isInteger(turnIndex)) state.turns[turnIndex].enemyAction.effect = effectDefault(event.target.value, 'enemy');
+  } else if (event.target.id === 'enemyAttribute') {
+    collectStateFromDom();
+    // 敵属性に応じて技が変わるキャラだけプリセットを更新する。
+    state.allies.slice(0, state.allyCount).forEach((ally, allyIndex) => {
+      if (ally.characterId === 'camineko' || ally.characterId === 'dark_bahamut') {
+        applyCharacterPreset(allyIndex, ally.characterId);
+      }
+    });
   } else if (event.target.classList.contains('skill-preset')) {
     collectStateFromDom();
     const card = event.target.closest('.action-card');
@@ -902,6 +965,7 @@ root.addEventListener('change', event => {
   if (
     event.target.id === 'allyCount' ||
     event.target.id === 'enemyRace' ||
+    event.target.id === 'enemyAttribute' ||
     event.target.classList.contains('action-kind') ||
     event.target.classList.contains('skill-preset') ||
     event.target.classList.contains('enemy-enabled') ||

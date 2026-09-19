@@ -1,4 +1,4 @@
-// 撃破確率シミュレータ v0.4.10
+// 撃破確率シミュレータ v0.4.11
 // 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([
@@ -95,6 +95,8 @@ function defaultAttackAction() {
     undeadSkillMultiplier: '',
     poisonedSkillMultiplier: '',
     deadlyPoisonSkillMultiplier: '',
+    weakDefenderAttribute: '',
+    weakSkillMultiplier: '',
     buff: defaultAllyBuff(),
     effects: []
   };
@@ -104,7 +106,7 @@ function defaultSkipAction() {
   return {
     kind: 'skip', skillMultiplier: '200', skillMultiplierMin: '', skillMultiplierMax: '', skillMultiplierStep: '',
     attackAttribute: 'none', attackAttribute2: 'none', attackType: 'physical', hits: '1', hitsMin: '', hitsMax: '',
-    undeadSkillMultiplier: '', poisonedSkillMultiplier: '', deadlyPoisonSkillMultiplier: '', buff: defaultAllyBuff(), effects: []
+    undeadSkillMultiplier: '', poisonedSkillMultiplier: '', deadlyPoisonSkillMultiplier: '', weakDefenderAttribute: '', weakSkillMultiplier: '', buff: defaultAllyBuff(), effects: []
   };
 }
 
@@ -640,6 +642,8 @@ function ensureAction(action, side = 'ally') {
     undeadSkillMultiplier: action?.undeadSkillMultiplier ?? '',
     poisonedSkillMultiplier: action?.poisonedSkillMultiplier ?? '',
     deadlyPoisonSkillMultiplier: action?.deadlyPoisonSkillMultiplier ?? '',
+    weakDefenderAttribute: action?.weakDefenderAttribute ?? '',
+    weakSkillMultiplier: action?.weakSkillMultiplier ?? '',
     buff: { ...defaultBuff, ...(action?.buff ?? {}) },
     effects: Array.isArray(action?.effects) ? action.effects : [],
     skillName: action?.skillName ?? ''
@@ -714,6 +718,10 @@ export function simulateKillProbability(state) {
             { clampMin: 1, clampMax: 999 }
           );
           let skillMultiplier = action.skillMultiplier;
+          if (action.weakDefenderAttribute && action.weakSkillMultiplier !== ''
+              && state.enemy?.attribute === action.weakDefenderAttribute) {
+            skillMultiplier = action.weakSkillMultiplier;
+          }
           if (runtime.enemy.race === 'undead' && action.undeadSkillMultiplier !== '') skillMultiplier = action.undeadSkillMultiplier;
           if (runtime.enemy.poison !== 'none' && action.poisonedSkillMultiplier !== '') skillMultiplier = action.poisonedSkillMultiplier;
           if (runtime.enemy.poison === 'deadlyPoison' && action.deadlyPoisonSkillMultiplier !== '') skillMultiplier = action.deadlyPoisonSkillMultiplier;

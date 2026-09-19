@@ -211,7 +211,9 @@ console.log('kill-engine tests: OK');
     'loki_brand', 'oni_spirit', 'sea_king_gaze', 'spirit_blessing', 'growl', 'sun_hymn',
     'sword_dance', 'name_announcement', 'fire2', 'fire3', 'aqua2', 'aqua3', 'wind2',
     'marking_arrow', 'self_destruct', 'bubble_grand', 'rengeki',
-    'heat_wave', 'ice_storm_strike', 'false_reflect_wall',
+    'heat_wave', 'ice_storm_strike',
+    'red_fire_breath', 'blue_aqua_breath', 'yellow_earth_breath', 'green_air_breath',
+    'red_point_2', 'blue_point_2', 'yellow_point_2', 'green_point_2',
     // ユーザー指定の追加枠
     'epidemic_glass', 'poison_bite', 'melting_breath', 'suck_dry'
   ]) assert.ok(majorIds.has(id), `${id} should be a major skill`);
@@ -219,7 +221,7 @@ console.log('kill-engine tests: OK');
   for (const id of [
     'foot_sweep', 'attack_bang', 'dragon_tail', 'aqua_breath', 'shining_breath',
     'fire1', 'ice1', 'thunder1', 'meteor', 'purifying_flame', 'shiden', 'critical_hit',
-    'ninja_thunder'
+    'shibire_giri', 'ninja_thunder'
   ]) assert.equal(majorIds.has(id), false, `${id} must stay character-preset-only`);
 }
 
@@ -420,4 +422,58 @@ console.log('kill-engine tests: OK');
   });
   assert.equal(Math.min(...fireWeak.keys()), 180); // floor(190×0.95)
   assert.equal(Math.min(...heatWeak.keys()), 171); // floor(180×0.95)
+}
+
+
+// 22) 「その他」カテゴリは悪疫グラスだけ。
+{
+  const others = SKILL_PRESETS.filter(x => x.major === true && x.majorGroup === 'other');
+  assert.deepEqual(others.map(x => x.id), ['epidemic_glass']);
+}
+
+// 23) ポイントは2EX相当の250%だけを残し、表示名からEX表記を外す。
+{
+  for (const [id, name, attr] of [
+    ['red_point_2','レッドポイント','fire'],
+    ['blue_point_2','ブルーポイント','water'],
+    ['yellow_point_2','イエローポイント','earth'],
+    ['green_point_2','グリーンポイント','wind']
+  ]) {
+    const p = SKILL_PRESET_BY_ID.get(id);
+    assert.deepEqual([p.skillName, p.skillMultiplier, p.attackAttribute], [name, '250', attr]);
+  }
+  for (const id of ['red_point_0','red_point_1','blue_point_0','blue_point_1','yellow_point_0','yellow_point_1','green_point_0','green_point_1']) {
+    assert.equal(SKILL_PRESET_BY_ID.has(id), false);
+  }
+}
+
+// 24) 冥界竜ダークバハムートの4属性ブレスを個別保持し、特効時150%→属性補正込み225%になる。
+{
+  const breath = SKILL_PRESET_BY_ID.get('red_fire_breath');
+  assert.deepEqual(
+    [breath.skillMultiplier, breath.attackAttribute, breath.attackType, breath.weakDefenderAttribute, breath.weakSkillMultiplier],
+    ['90','fire','other','water','150']
+  );
+  const s = cloneDefaultState();
+  s.allyCount = 1;
+  s.enemy.attribute = 'water';
+  s.enemy.maxHp = '230';
+  s.enemy.speed = '10';
+  s.allies[0].attack = '100';
+  s.allies[0].speed = '100';
+  s.turns[0].allyActions[0] = {
+    kind: 'attack', skillMultiplier: breath.skillMultiplier, attackAttribute: breath.attackAttribute,
+    attackAttribute2: 'none', attackType: breath.attackType, hits: '1', effects: [],
+    weakDefenderAttribute: breath.weakDefenderAttribute, weakSkillMultiplier: breath.weakSkillMultiplier
+  };
+  s.turns[0].enemyAction.enabled = false;
+  const r = simulateKillProbability(s);
+  // 100×150%=150 → 火→水1.5=225 → 乱数213～236。
+  assert.ok(r.killChance > 0 && r.killChance < 1);
+}
+
+// 25) キャプテン・アズール用のシビレ斬りは毒属性100%物理。
+{
+  const p = SKILL_PRESET_BY_ID.get('shibire_giri');
+  assert.deepEqual([p.skillMultiplier, p.attackAttribute, p.attackType], ['100','poison','physical']);
 }

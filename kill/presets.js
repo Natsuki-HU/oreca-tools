@@ -7,13 +7,14 @@ const attack = (id, name, {
   multiplier = '100', attribute = 'none', attribute2 = 'none', attackType = 'physical', hits = '1',
   multiplierMin = '', multiplierMax = '', multiplierStep = '', hitsMin = '', hitsMax = '',
   undeadSkillMultiplier = '', poisonedSkillMultiplier = '', deadlyPoisonSkillMultiplier = '',
+  weakDefenderAttribute = '', weakSkillMultiplier = '',
   effects = [], note = '', selectable = true
 } = {}) => ({
   id, name, kind: 'attack', skillName: name, skillMultiplier: multiplier,
   attackAttribute: attribute, attackAttribute2: attribute2, attackType, hits,
   skillMultiplierMin: multiplierMin, skillMultiplierMax: multiplierMax, skillMultiplierStep: multiplierStep,
   hitsMin, hitsMax, undeadSkillMultiplier, poisonedSkillMultiplier, deadlyPoisonSkillMultiplier,
-  effects, note, selectable
+  weakDefenderAttribute, weakSkillMultiplier, effects, note, selectable
 });
 
 const buff = (id, name, buffData, effects = [], note = '', selectable = true) => ({
@@ -72,18 +73,10 @@ export const SKILL_PRESETS = Object.freeze([
   }), 'attack'),
 
   // 攻撃技：〇〇ポイント。EXゲージ量別に実用値を分けて選択できるようにする。
-  major(attack('red_point_0', 'レッドポイント（EX0）', { multiplier: '100', attribute: 'fire', attackType: 'physical' }), 'attack'),
-  major(attack('red_point_1', 'レッドポイント（EX1）', { multiplier: '200', attribute: 'fire', attackType: 'physical' }), 'attack'),
-  major(attack('red_point_2', 'レッドポイント（EX2）', { multiplier: '250', attribute: 'fire', attackType: 'physical' }), 'attack'),
-  major(attack('blue_point_0', 'ブルーポイント（EX0）', { multiplier: '100', attribute: 'water', attackType: 'physical' }), 'attack'),
-  major(attack('blue_point_1', 'ブルーポイント（EX1）', { multiplier: '200', attribute: 'water', attackType: 'physical' }), 'attack'),
-  major(attack('blue_point_2', 'ブルーポイント（EX2）', { multiplier: '250', attribute: 'water', attackType: 'physical' }), 'attack'),
-  major(attack('yellow_point_0', 'イエローポイント（EX0）', { multiplier: '100', attribute: 'earth', attackType: 'physical' }), 'attack'),
-  major(attack('yellow_point_1', 'イエローポイント（EX1）', { multiplier: '200', attribute: 'earth', attackType: 'physical' }), 'attack'),
-  major(attack('yellow_point_2', 'イエローポイント（EX2）', { multiplier: '250', attribute: 'earth', attackType: 'physical' }), 'attack'),
-  major(attack('green_point_0', 'グリーンポイント（EX0）', { multiplier: '100', attribute: 'wind', attackType: 'physical' }), 'attack'),
-  major(attack('green_point_1', 'グリーンポイント（EX1）', { multiplier: '200', attribute: 'wind', attackType: 'physical' }), 'attack'),
-  major(attack('green_point_2', 'グリーンポイント（EX2）', { multiplier: '250', attribute: 'wind', attackType: 'physical' }), 'attack'),
+  major(attack('red_point_2', 'レッドポイント', { multiplier: '250', attribute: 'fire', attackType: 'physical' }), 'attack'),
+  major(attack('blue_point_2', 'ブルーポイント', { multiplier: '250', attribute: 'water', attackType: 'physical' }), 'attack'),
+  major(attack('yellow_point_2', 'イエローポイント', { multiplier: '250', attribute: 'earth', attackType: 'physical' }), 'attack'),
+  major(attack('green_point_2', 'グリーンポイント', { multiplier: '250', attribute: 'wind', attackType: 'physical' }), 'attack'),
 
   major(attack('crush', 'おしつぶし', {
     multiplier: '65', attribute: 'earth', attackType: 'physical', hits: '4',
@@ -103,9 +96,21 @@ export const SKILL_PRESETS = Object.freeze([
   major(attack('fire_torture', '火責め', { multiplier: '165', attribute: 'fire', attackType: 'magic' }), 'attack'),
   major(attack('water_torture', '水責め', { multiplier: '165', attribute: 'water', attackType: 'magic' }), 'attack'),
   major(attack('wet_slicer', 'ウェットスライサー', { multiplier: '50', attribute: 'water', attackType: 'physical', hits: '4' }), 'attack'),
-  major(attack('dark_bahamut_breath', '〇〇ブレス', {
-    multiplier: '90', attribute: 'all', attackType: 'other',
-    note: '冥界竜ダークバハムート用。敵属性に合わせた具体的なブレス属性・特効倍率は必要に応じて手動変更してください。'
+  major(attack('red_fire_breath', 'レッドファイアブレス', {
+    multiplier: '90', attribute: 'fire', attackType: 'other', weakDefenderAttribute: 'water', weakSkillMultiplier: '150',
+    note: '通常90%。水属性への特効時は技倍率150%として計算します。'
+  }), 'attack'),
+  major(attack('blue_aqua_breath', 'ブルーアクアブレス', {
+    multiplier: '90', attribute: 'water', attackType: 'other', weakDefenderAttribute: 'earth', weakSkillMultiplier: '150',
+    note: '通常90%。土属性への特効時は技倍率150%として計算します。'
+  }), 'attack'),
+  major(attack('yellow_earth_breath', 'イエローアースブレス', {
+    multiplier: '90', attribute: 'earth', attackType: 'other', weakDefenderAttribute: 'wind', weakSkillMultiplier: '150',
+    note: '通常90%。風属性への特効時は技倍率150%として計算します。'
+  }), 'attack'),
+  major(attack('green_air_breath', 'グリーンエアブレス', {
+    multiplier: '90', attribute: 'wind', attackType: 'other', weakDefenderAttribute: 'fire', weakSkillMultiplier: '150',
+    note: '通常90%。火属性への特効時は技倍率150%として計算します。'
   }), 'attack'),
   major(attack('roaring_lightning', '轟く稲妻', {
     multiplier: '80', attribute: 'thunder', attackType: 'physical', hits: '4', hitsMin: '3', hitsMax: '5',
@@ -164,18 +169,12 @@ export const SKILL_PRESETS = Object.freeze([
   major(attack('ice_storm_strike', '氷嵐撃', { multiplier: '140', attribute: 'ice', attribute2: 'wind', attackType: 'physical' }), 'attack'),
 
   // その他：この撃破確率ツールで敵HPに直接影響しない効果は、選択肢として保持して注記する。
-  major(effectOnly('kerakuzu', 'ケラクズ', [], '状態異常解除・予防は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
-  major(effectOnly('sun_blessing', '太陽の加護', [], '状態異常解除・付与率低下は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
-  major(effectOnly('bubble_barrier_grand', 'シャボン・バリア・グラン', [], '被ダメージ軽減・状態異常予防は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
-  major(effectOnly('ex_gauge_plus8', 'EXゲージ+8', [], 'EXゲージ増加は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
-  major(effectOnly('queen_reward', '女王のごほうび', [], 'コマンドレベル上昇は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
-  major(effectOnly('false_reflect_wall', 'いつわりの反射壁', [], '攻撃反射は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
 
   // ユーザー指定の追加主要技（Wikiのコマンドサンプル一覧外を含む）。
   // 吸いつくしは、指定どおり自身の攻撃+15だけを計算し、味方へのダメージ・回復は無視する。
   major(buff('suck_dry', '吸いつくし',
     { type: 'atkBuff', target: 'self', mode: 'add', value: '15', duration: '3' },
-    [], '撃破確率計算では自身の攻撃+15のみ反映し、味方へのダメージ・回復は無視します。'), 'attack'),
+    [], '撃破確率計算では自身の攻撃+15のみ反映し、味方へのダメージ・回復は無視します。'), 'buff'),
   major(attack('poison_bite', 'どくかみつき', {
     multiplier: '140', attribute: 'poison', attackType: 'physical', effects: [{ type: 'poison' }]
   }), 'attack'),
@@ -193,6 +192,10 @@ export const SKILL_PRESETS = Object.freeze([
     multiplier: '40', attribute: 'none', attackType: 'physical',
     effects: [{ type: 'defenseDown', mode: 'mult', value: '20', duration: '99', expiry: 'sourceNextActionStart' }],
     note: '敵の被ダメージ1.2倍。使用者の次の行動開始まで。'
+  }),
+  attack('shibire_giri', 'シビレ斬り', {
+    multiplier: '100', attribute: 'poison', attackType: 'physical',
+    note: '麻痺30%は撃破確率計算では未反映。'
   }),
   attack('attack_bang', 'こうげき!', { multiplier: '100', attribute: 'none', attackType: 'physical' }),
   attack('dragon_tail', '竜のしっぽ', { multiplier: '90', attribute: 'none', attackType: 'physical' }),
@@ -223,9 +226,21 @@ const ALIASES = new Map([
   ['ウィンド‼︎', 'wind2'],
   ['ウィンド‼', 'wind2'],
   ['太陽賛歌', 'sun_hymn'],
-  ['ブレス系統（敵属性で選択）', 'dark_bahamut_breath'],
-  ['○○ブレス', 'dark_bahamut_breath'],
-  ['〇〇ブレス（敵属性で選択）', 'dark_bahamut_breath']
+  ['ブレス系統（敵属性で選択）', 'red_fire_breath'],
+  ['○○ブレス', 'red_fire_breath'],
+  ['〇〇ブレス（敵属性で選択）', 'red_fire_breath'],
+  ['レッドポイント（EX0）', 'red_point_2'],
+  ['レッドポイント（EX1）', 'red_point_2'],
+  ['レッドポイント（EX2）', 'red_point_2'],
+  ['ブルーポイント（EX0）', 'blue_point_2'],
+  ['ブルーポイント（EX1）', 'blue_point_2'],
+  ['ブルーポイント（EX2）', 'blue_point_2'],
+  ['イエローポイント（EX0）', 'yellow_point_2'],
+  ['イエローポイント（EX1）', 'yellow_point_2'],
+  ['イエローポイント（EX2）', 'yellow_point_2'],
+  ['グリーンポイント（EX0）', 'green_point_2'],
+  ['グリーンポイント（EX1）', 'green_point_2'],
+  ['グリーンポイント（EX2）', 'green_point_2']
 ]);
 
 export function normalizeSkillName(name) {
@@ -240,6 +255,14 @@ export function presetIdForSkillName(name) {
   const raw = String(name ?? '').trim();
   if (ALIASES.has(raw)) return ALIASES.get(raw);
   return NORMALIZED_NAME_TO_ID.get(normalizeSkillName(raw)) ?? '';
+}
+
+export function darkBahamutPresetForEnemy(attribute) {
+  if (attribute === 'water') return 'red_fire_breath';
+  if (attribute === 'earth') return 'blue_aqua_breath';
+  if (attribute === 'wind') return 'yellow_earth_breath';
+  if (attribute === 'fire') return 'green_air_breath';
+  return 'red_fire_breath';
 }
 
 export function caminekoPresetForEnemy(attribute) {
