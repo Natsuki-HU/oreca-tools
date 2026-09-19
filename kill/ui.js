@@ -16,8 +16,9 @@ import {
   presetIdForSkillName
 } from './presets.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.4.4';
-const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.3', 'oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.6';
+const PREVIOUS_STORAGE_KEY = 'oreca-tools.kill.v0.4.5';
+const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.4', 'oreca-tools.kill.v0.4.3', 'oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
 const root = document.getElementById('killRoot');
 const resetButton = document.getElementById('resetButton');
 
@@ -107,8 +108,8 @@ function statusForCharacter(state, characterId) {
 
 function defaultPrimaryBuff(side = 'ally') {
   return side === 'enemy'
-    ? { type: 'enemyAtkBuff', mode: 'mult', value: '150', duration: '1' }
-    : { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' };
+    ? { type: 'enemyAtkBuff', mode: 'mult', value: '50', duration: '1' }
+    : { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' };
 }
 
 function escapeHtml(value) {
@@ -123,7 +124,30 @@ function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function normalizeState(saved) {
+const EFFECT_AMOUNT_TYPES = new Set([
+  'atkBuff', 'speedBuff', 'defenseDown', 'speedDown',
+  'allyAtkDebuff', 'allySpeedDebuff', 'enemyAtkBuff', 'enemyDefenseBuff', 'enemySpeedBuff'
+]);
+
+function migrateLegacyEffectAmount(effect) {
+  if (!effect || typeof effect !== 'object' || !EFFECT_AMOUNT_TYPES.has(effect.type)) return effect;
+  const next = { ...effect };
+  const n = Number(next.value);
+  if (Number.isFinite(n)) {
+    next.value = String(next.mode === 'add' ? Math.abs(n) : Math.abs(n - 100));
+  }
+  return next;
+}
+
+function migrateLegacyActionAmounts(action) {
+  if (!action || typeof action !== 'object') return action;
+  const next = { ...action };
+  if (next.buff) next.buff = migrateLegacyEffectAmount(next.buff);
+  if (Array.isArray(next.effects)) next.effects = next.effects.map(migrateLegacyEffectAmount);
+  return next;
+}
+
+function normalizeState(saved, legacyAmounts = false) {
   const fallback = cloneDefaultState();
   if (!saved || typeof saved !== 'object') return fallback;
 
@@ -141,7 +165,8 @@ function normalizeState(saved) {
 
   for (const turn of state.turns) {
     turn.allyActions = Array.from({ length: 3 }, (_, i) => {
-      const raw = turn.allyActions?.[i] ?? {};
+      const originalRaw = turn.allyActions?.[i] ?? {};
+      const raw = legacyAmounts ? migrateLegacyActionAmounts(originalRaw) : originalRaw;
       const presetId = raw.skillPresetId ?? presetIdForSkillName(raw.skillName ?? '');
       const normalized = {
         kind: raw.kind ?? 'skip',
@@ -170,9 +195,10 @@ function normalizeState(saved) {
     const legacyEnemyEffect = Array.isArray(turn.enemyAction?.effects) && turn.enemyAction.effects.length
       ? turn.enemyAction.effects[0]
       : turn.enemyAction?.kind === 'buff' ? turn.enemyAction?.buff : null;
+    const migratedEnemyEffect = legacyAmounts ? migrateLegacyEffectAmount(turn.enemyAction?.effect ?? legacyEnemyEffect) : (turn.enemyAction?.effect ?? legacyEnemyEffect);
     turn.enemyAction = {
       enabled: turn.enemyAction?.enabled !== false,
-      effect: { type: 'none', target: 'all', mode: 'mult', value: '80', duration: '1', ...(turn.enemyAction?.effect ?? legacyEnemyEffect ?? {}) }
+      effect: { type: 'none', target: 'all', mode: 'mult', value: '20', duration: '1', ...(migratedEnemyEffect ?? {}) }
     };
   }
   return state;
@@ -181,10 +207,12 @@ function normalizeState(saved) {
 function loadState() {
   try {
     const current = localStorage.getItem(STORAGE_KEY);
-    if (current) return normalizeState(JSON.parse(current));
+    if (current) return normalizeState(JSON.parse(current), false);
+    const previous = localStorage.getItem(PREVIOUS_STORAGE_KEY);
+    if (previous) return normalizeState(JSON.parse(previous), false);
     for (const key of LEGACY_STORAGE_KEYS) {
       const legacy = localStorage.getItem(key);
-      if (legacy) return normalizeState(JSON.parse(legacy));
+      if (legacy) return normalizeState(JSON.parse(legacy), true);
     }
     return normalizeState(cloneDefaultState());
   } catch {
@@ -314,25 +342,36 @@ function effectDefault(type, side) {
   if (type === 'heal') return { type, mode: 'flat', value: '200' };
   if (side === 'enemy') {
     if (type === 'allyAtkDebuff' || type === 'allySpeedDebuff') {
-      return { type, target: 'all', mode: 'mult', value: '80', duration: '1' };
+      return { type, target: 'all', mode: 'mult', value: '20', duration: '1' };
     }
-    return { type, mode: 'mult', value: '150', duration: '1' };
+    if (type === 'enemyDefenseBuff') return { type, mode: 'mult', value: '20', duration: '1' };
+    return { type, mode: 'mult', value: '50', duration: '1' };
   }
-  if (type === 'defenseDown') return { type, mode: 'mult', value: '120', duration: '1' };
-  if (type === 'speedDown') return { type, mode: 'mult', value: '80', duration: '1' };
-  return { type, target: 'self', mode: 'mult', value: '150', duration: '1' };
+  if (type === 'defenseDown') return { type, mode: 'mult', value: '20', duration: '1' };
+  if (type === 'speedDown') return { type, mode: 'mult', value: '20', duration: '1' };
+  return { type, target: 'self', mode: 'mult', value: '50', duration: '1' };
 }
 
-function targetOptions(selected, includeSelf = true) {
-  const items = [];
-  if (includeSelf) items.push(['self', '自分']);
-  if (includeSelf) items.push(['others', '自分以外の味方']);
-  for (let i = 1; i <= state.allyCount; i++) items.push([`ally${i}`, `キャラ${i}`]);
-  items.push(['all', '味方全員']);
-  return optionsHtml(items, selected);
+function resolvedTargetIds(target, actorIndex = 0) {
+  if (Array.isArray(target)) return target.filter(x => /^ally[1-3]$/.test(x));
+  if (target === 'all') return Array.from({ length: state.allyCount }, (_, i) => `ally${i + 1}`);
+  if (target === 'self') return [`ally${actorIndex + 1}`];
+  if (target === 'others') return Array.from({ length: state.allyCount }, (_, i) => `ally${i + 1}`).filter(x => x !== `ally${actorIndex + 1}`);
+  if (/^ally[1-3]$/.test(target ?? '')) return [target];
+  return [];
 }
 
-function effectFieldsHtml(effect, side) {
+function targetCheckboxesHtml(selected, actorIndex = 0, className = 'effect-target-checkbox', disabled = false) {
+  const selectedSet = new Set(resolvedTargetIds(selected, actorIndex));
+  return `<div class="target-toggle-group" aria-label="対象">
+    ${[1, 2, 3].map(i => {
+      const inactive = i > state.allyCount;
+      return `<label class="target-toggle ${inactive ? 'is-inactive' : ''}"><input type="checkbox" class="${className}" value="ally${i}" ${selectedSet.has(`ally${i}`) ? 'checked' : ''} ${(disabled || inactive) ? 'disabled' : ''}><span>キャラ${i}</span></label>`;
+    }).join('')}
+  </div>`;
+}
+
+function effectFieldsHtml(effect, side, actorIndex = 0) {
   const type = effect.type;
   if (type === 'poison' || type === 'deadlyPoison') {
     return '<div class="effect-note">後から付与した毒系状態で上書き</div>';
@@ -342,7 +381,7 @@ function effectFieldsHtml(effect, side) {
   }
   if (type === 'weaknessBuff') {
     return `
-      <select class="effect-target" aria-label="対象">${targetOptions(effect.target ?? 'all')}</select>
+      ${targetCheckboxesHtml(effect.target ?? 'all', actorIndex)}
       <div class="input-with-suffix compact-input">
         <input class="effect-duration" type="number" inputmode="numeric" step="1" min="1" max="99" value="${escapeHtml(effect.duration ?? '3')}" aria-label="継続ターン" />
         <span class="suffix">ターン</span>
@@ -360,13 +399,13 @@ function effectFieldsHtml(effect, side) {
 
   const isTargeted = ['atkBuff', 'speedBuff', 'allyAtkDebuff', 'allySpeedDebuff'].includes(type);
   const target = isTargeted
-    ? `<select class="effect-target" aria-label="対象">${targetOptions(effect.target ?? (side === 'enemy' ? 'all' : 'self'), side !== 'enemy')}</select>`
+    ? targetCheckboxesHtml(effect.target ?? (side === 'enemy' ? 'all' : 'self'), actorIndex)
     : '';
   const modeControl = type === 'defenseDown'
     ? ''
     : `<select class="effect-mode" aria-label="補正方式">
-        <option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>乗算</option>
-        <option value="add" ${effect.mode === 'add' ? 'selected' : ''}>加算（±）</option>
+        <option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>割合</option>
+        <option value="add" ${effect.mode === 'add' ? 'selected' : ''}>固定値</option>
       </select>`;
   const isAdd = type !== 'defenseDown' && effect.mode === 'add';
 
@@ -384,7 +423,7 @@ function effectFieldsHtml(effect, side) {
     ${target}
     ${modeControl}
     <div class="input-with-suffix compact-input">
-      <input class="effect-value" type="number" inputmode="decimal" step="0.1" value="${escapeHtml(effect.value ?? '100')}" aria-label="補正値" />
+      <input class="effect-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(effect.value ?? '0')}" aria-label="効果量" />
       <span class="suffix">${isAdd ? '' : '%'}</span>
     </div>
     ${durationControl}`;
@@ -398,17 +437,17 @@ function effectsHtml(effects, side, turnIndex, actorKey) {
       <select class="effect-type" aria-label="追加効果">
         ${optionsHtml(types, effect.type)}
       </select>
-      ${effectFieldsHtml(effect, side)}
+      ${effectFieldsHtml(effect, side, actorKey.startsWith('ally') ? Number(actorKey.replace('ally', '')) : 0)}
       <button class="icon-button remove-effect" type="button" aria-label="追加効果を削除">×</button>
     </div>`).join('');
 }
 
-function primaryBuffHtml(buff, side, disabled = false) {
+function primaryBuffHtml(buff, side, disabled = false, actorIndex = 0) {
   const b = { ...defaultPrimaryBuff(side), ...(buff ?? {}) };
   const types = side === 'enemy' ? ENEMY_BUFF_TYPES : ALLY_BUFF_TYPES;
   const isAdd = b.mode === 'add';
   const target = side === 'ally'
-    ? `<label class="mini-field"><span>対象</span><select class="main-buff-target" ${disabled ? 'disabled' : ''}>${targetOptions(b.target ?? 'self')}</select></label>`
+    ? `<label class="mini-field target-field"><span>対象</span>${targetCheckboxesHtml(b.target ?? 'self', actorIndex, 'main-buff-target-checkbox', disabled)}</label>`
     : '';
   return `
     <div class="primary-buff-block">
@@ -416,8 +455,8 @@ function primaryBuffHtml(buff, side, disabled = false) {
       <div class="primary-buff-grid">
         <label class="mini-field"><span>能力</span><select class="main-buff-type" ${disabled ? 'disabled' : ''}>${optionsHtml(types, b.type)}</select></label>
         ${target}
-        <label class="mini-field"><span>方式</span><select class="main-buff-mode" ${disabled ? 'disabled' : ''}><option value="mult" ${b.mode !== 'add' ? 'selected' : ''}>乗算</option><option value="add" ${b.mode === 'add' ? 'selected' : ''}>加算</option></select></label>
-        <label class="mini-field"><span>値</span><div class="input-with-suffix"><input class="main-buff-value" type="number" inputmode="decimal" step="0.1" value="${escapeHtml(b.value ?? (isAdd ? '50' : '150'))}" ${disabled ? 'disabled' : ''}><span class="suffix">${isAdd ? '' : '%'}</span></div></label>
+        <label class="mini-field"><span>方式</span><select class="main-buff-mode" ${disabled ? 'disabled' : ''}><option value="mult" ${b.mode !== 'add' ? 'selected' : ''}>割合</option><option value="add" ${b.mode === 'add' ? 'selected' : ''}>固定値</option></select></label>
+        <label class="mini-field"><span>効果量</span><div class="input-with-suffix"><input class="main-buff-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(b.value ?? (isAdd ? '50' : '50'))}" ${disabled ? 'disabled' : ''}><span class="suffix">${isAdd ? '' : '%'}</span></div></label>
         <label class="mini-field"><span>継続</span><div class="input-with-suffix"><input class="main-buff-duration" type="number" inputmode="numeric" min="1" max="99" step="1" value="${escapeHtml(b.duration ?? '1')}" ${disabled ? 'disabled' : ''}><span class="suffix">ターン</span></div></label>
       </div>
     </div>`;
@@ -447,7 +486,6 @@ function actionCardHtml(action, turnIndex, allyIndex) {
       </div>
       ${action.kind !== 'same' ? `
         <label class="mini-field"><span>主要技プリセット</span><select class="skill-preset">${skillPresetOptionsHtml(action.skillPresetId ?? '')}</select></label>
-        <label class="mini-field skill-name-field"><span>使用技</span><input class="skill-name" type="text" value="${escapeHtml(action.skillName ?? '')}" placeholder="技名"></label>
         ${presetMeta?.note ? `<p class="inline-note">${escapeHtml(presetMeta.note)}</p>` : ''}` : ''}
       ${action.kind === 'attack' ? `
         <div class="action-input-grid">
@@ -464,7 +502,7 @@ function actionCardHtml(action, turnIndex, allyIndex) {
             <label class="mini-field"><span>ヒット数 上限</span><input class="hit-count-max" type="number" inputmode="numeric" step="1" min="1" max="50" value="${escapeHtml(action.hitsMax)}"></label>` : `
             <label class="mini-field"><span>ヒット数</span><input class="hit-count" type="number" inputmode="numeric" step="1" min="1" max="50" value="${escapeHtml(action.hits)}"></label>`}
         </div>` : ''}
-      ${action.kind === 'buff' ? primaryBuffHtml(action.buff, 'ally') : ''}
+      ${action.kind === 'buff' ? primaryBuffHtml(action.buff, 'ally', false, allyIndex) : ''}
       ${action.kind === 'same' ? '<p class="same-action-note">前回の同モンスターの行動内容をそのまま使用します。</p>' : ''}
       ${['attack', 'buff', 'effect'].includes(action.kind) ? `
         <div class="effects-block">
@@ -484,11 +522,11 @@ function enemyEffectFieldsHtml(effect, enabled) {
     </div>`;
   }
   const targeted = effect.type === 'allyAtkDebuff' || effect.type === 'allySpeedDebuff';
-  const defaultValue = effect.type === 'enemyDefenseBuff' ? '80' : (targeted ? '80' : '150');
+  const defaultValue = '20';
   return `<div class="enemy-effect-fields">
-    ${targeted ? `<label class="mini-field"><span>対象</span><select class="enemy-effect-target" ${disabled}>${targetOptions(effect.target ?? 'all', false)}</select></label>` : ''}
-    <label class="mini-field"><span>方式</span><select class="enemy-effect-mode" ${disabled}><option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>乗算</option><option value="add" ${effect.mode === 'add' ? 'selected' : ''}>加算</option></select></label>
-    <label class="mini-field"><span>値</span><div class="input-with-suffix"><input class="enemy-effect-value" type="number" inputmode="decimal" step="0.1" value="${escapeHtml(effect.value ?? defaultValue)}" ${disabled}><span class="suffix">${effect.mode === 'add' ? '' : '%'}</span></div></label>
+    ${targeted ? `<label class="mini-field target-field"><span>対象</span>${targetCheckboxesHtml(effect.target ?? 'all', 0, 'enemy-effect-target-checkbox', !enabled)}</label>` : ''}
+    <label class="mini-field"><span>方式</span><select class="enemy-effect-mode" ${disabled}><option value="mult" ${effect.mode !== 'add' ? 'selected' : ''}>割合</option><option value="add" ${effect.mode === 'add' ? 'selected' : ''}>固定値</option></select></label>
+    <label class="mini-field"><span>効果量</span><div class="input-with-suffix"><input class="enemy-effect-value" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(effect.value ?? defaultValue)}" ${disabled}><span class="suffix">${effect.mode === 'add' ? '' : '%'}</span></div></label>
     <label class="mini-field"><span>継続</span><div class="input-with-suffix"><input class="enemy-effect-duration" type="number" inputmode="numeric" min="1" max="99" step="1" value="${escapeHtml(effect.duration ?? '1')}" ${disabled}><span class="suffix">ターン</span></div></label>
   </div>`;
 }
@@ -652,7 +690,8 @@ function collectStateFromDom() {
       action.enabled = card.querySelector('.enemy-enabled')?.checked ?? action.enabled;
       const type = card.querySelector('.enemy-effect-type')?.value ?? action.effect?.type ?? 'none';
       const effect = { type };
-      const target = card.querySelector('.enemy-effect-target')?.value;
+      const targetBoxes = [...card.querySelectorAll('.enemy-effect-target-checkbox')];
+      const target = targetBoxes.length ? targetBoxes.filter(x => x.checked).map(x => x.value) : undefined;
       const mode = card.querySelector('.enemy-effect-mode')?.value;
       const value = card.querySelector('.enemy-effect-value')?.value;
       const duration = card.querySelector('.enemy-effect-duration')?.value;
@@ -676,7 +715,6 @@ function collectStateFromDom() {
       action.hits = card.querySelector('.hit-count')?.value ?? action.hits;
       action.hitsMin = card.querySelector('.hit-count-min')?.value ?? action.hitsMin ?? '';
       action.hitsMax = card.querySelector('.hit-count-max')?.value ?? action.hitsMax ?? '';
-      action.skillName = card.querySelector('.skill-name')?.value ?? action.skillName ?? '';
       action.buff = collectPrimaryBuff(card, 'ally', action.buff);
       action.effects = collectEffects(card);
     }
@@ -689,11 +727,11 @@ function collectPrimaryBuff(card, side, current) {
   const buff = {
     type,
     mode: card.querySelector('.main-buff-mode')?.value ?? 'mult',
-    value: card.querySelector('.main-buff-value')?.value ?? '150',
+    value: card.querySelector('.main-buff-value')?.value ?? '50',
     duration: card.querySelector('.main-buff-duration')?.value ?? '1'
   };
-  const target = card.querySelector('.main-buff-target')?.value;
-  if (target !== undefined) buff.target = target;
+  const targetBoxes = [...card.querySelectorAll('.main-buff-target-checkbox')];
+  if (targetBoxes.length) buff.target = targetBoxes.filter(x => x.checked).map(x => x.value);
   return buff;
 }
 
@@ -701,7 +739,8 @@ function collectEffects(card) {
   return [...card.querySelectorAll('.effect-row')].map(row => {
     const type = row.querySelector('.effect-type')?.value;
     const effect = { type };
-    const target = row.querySelector('.effect-target')?.value;
+    const targetBoxes = [...row.querySelectorAll('.effect-target-checkbox')];
+    const target = targetBoxes.length ? targetBoxes.filter(x => x.checked).map(x => x.value) : undefined;
     const mode = row.querySelector('.effect-mode')?.value;
     const value = row.querySelector('.effect-value')?.value;
     const duration = row.querySelector('.effect-duration')?.value;
@@ -753,6 +792,22 @@ root.addEventListener('change', event => {
     const card = event.target.closest('.ally-card');
     const allyIndex = Number(card?.dataset.allyIndex);
     if (Number.isInteger(allyIndex)) applyCharacterPreset(allyIndex, event.target.value);
+  } else if (event.target.classList.contains('effect-type')) {
+    collectStateFromDom();
+    const row = event.target.closest('.effect-row');
+    const turnIndex = Number(row?.dataset.turnIndex);
+    const actorKey = row?.dataset.actorKey ?? '';
+    const effectIndex = Number(row?.dataset.effectIndex);
+    const side = row?.dataset.effectSide ?? 'ally';
+    const next = effectDefault(event.target.value, side);
+    if (side === 'ally' && actorKey.startsWith('ally') && Number.isInteger(turnIndex) && Number.isInteger(effectIndex)) {
+      state.turns[turnIndex].allyActions[Number(actorKey.replace('ally', ''))].effects[effectIndex] = next;
+    }
+  } else if (event.target.classList.contains('enemy-effect-type')) {
+    collectStateFromDom();
+    const card = event.target.closest('.enemy-action-card');
+    const turnIndex = Number(card?.dataset.turnIndex);
+    if (Number.isInteger(turnIndex)) state.turns[turnIndex].enemyAction.effect = effectDefault(event.target.value, 'enemy');
   } else if (event.target.classList.contains('skill-preset')) {
     collectStateFromDom();
     const card = event.target.closest('.action-card');

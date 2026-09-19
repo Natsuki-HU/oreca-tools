@@ -34,10 +34,10 @@ export const SKILL_PRESETS = Object.freeze([
 
   // バフ / 強化技
   major(buff('loki_brand', 'ロキブランド',
-    { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '2' },
+    { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '2' },
     [], '対象は手動変更できます。'), 'buff'),
   major(buff('oni_spirit', '鬼の気合入れ',
-    { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '1' }), 'buff'),
+    { type: 'atkBuff', target: 'self', mode: 'mult', value: '100', duration: '1' }), 'buff'),
   major(buff('sea_king_gaze', '海王のまなざし',
     { type: 'atkBuff', target: 'self', mode: 'add', value: '30', duration: '99' },
     [{ type: 'speedBuff', target: 'self', mode: 'add', value: '30', duration: '99' }],
@@ -46,22 +46,18 @@ export const SKILL_PRESETS = Object.freeze([
     [{ type: 'weaknessBuff', target: 'all', duration: '3' }],
     '弱点倍率1.5→1.9、1.4→1.8。'), 'buff'),
   major(buff('growl', 'うなる',
-    { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '3' }), 'buff'),
+    { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '3' }), 'buff'),
   major(buff('sun_hymn', '太陽讃歌',
     { type: 'atkBuff', target: 'self', mode: 'add', value: '50', duration: '3' },
     [], '本来は自軍の火属性が対象です。味方属性入力がないため対象は手動変更してください。'), 'buff'),
   major(buff('sword_dance', 'つるぎの舞',
-    { type: 'atkBuff', target: 'others', mode: 'mult', value: '120', duration: '3' },
+    { type: 'atkBuff', target: 'others', mode: 'mult', value: '20', duration: '3' },
     [], '自身以外の味方を1.2倍。自動連続使用・被弾による解除はこのツールでは扱いません。'), 'buff'),
   major(buff('name_announcement', '名乗り上げ',
-    { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '3' },
+    { type: 'atkBuff', target: 'self', mode: 'mult', value: '100', duration: '3' },
     [], '味方をかばう効果は撃破確率には反映しません。'), 'buff'),
 
   // 攻撃技：忍法 〇〇の術
-  major(attack('ninja_thunder', '忍法 雷鳴の術', {
-    multiplier: '80', multiplierMin: '70', multiplierMax: '90', multiplierStep: '0.1',
-    attribute: 'thunder', attackType: 'magic', hits: '3'
-  }), 'attack'),
   major(attack('ninja_wind', '忍法 風迅の術', {
     multiplier: '80', multiplierMin: '70', multiplierMax: '90', multiplierStep: '0.1',
     attribute: 'wind', attackType: 'magic', hits: '3'
@@ -130,7 +126,7 @@ export const SKILL_PRESETS = Object.freeze([
   major(attack('rain_god_spear', '雨神の戟', { multiplier: '230', attribute: 'water', attackType: 'physical' }), 'attack'),
   major(attack('marking_arrow', 'マーキングアロー', {
     multiplier: '110', attribute: 'none', attackType: 'physical',
-    effects: [{ type: 'defenseDown', mode: 'mult', value: '140', duration: '99', expiry: 'sourceNextActionEnd' }],
+    effects: [{ type: 'defenseDown', mode: 'mult', value: '40', duration: '99', expiry: 'sourceNextActionEnd' }],
     note: '敵の被ダメージ1.4倍。使用者の次の行動終了まで。'
   }), 'attack'),
   major(attack('paralysis_arrow', 'マヒ矢', {
@@ -162,10 +158,6 @@ export const SKILL_PRESETS = Object.freeze([
     note: '敵の素早さ半減（2ターン）を反映。速度差で威力が上がる部分は未反映。'
   }), 'attack'),
 
-  // 吸いつくしはコマンドサンプル上は攻撃技だが、以前の指定どおり自身の攻撃+15だけを計算する。
-  major(buff('suck_dry', '吸いつくし',
-    { type: 'atkBuff', target: 'self', mode: 'add', value: '15', duration: '3' },
-    [], '撃破確率計算では自身の攻撃+15のみ反映し、味方へのダメージ・回復は無視します。'), 'attack'),
   major(attack('bubble_grand', 'シャボン・グラン', { multiplier: '150', attribute: 'water', attackType: 'magic' }), 'attack'),
   major(attack('rengeki', '連撃', { multiplier: '115', attribute: 'none', attackType: 'physical', hits: '2' }), 'attack'),
   major(attack('heat_wave', 'ヒートウェイブ', { multiplier: '90', attribute: 'fire', attackType: 'physical' }), 'attack'),
@@ -179,7 +171,11 @@ export const SKILL_PRESETS = Object.freeze([
   major(effectOnly('queen_reward', '女王のごほうび', [], 'コマンドレベル上昇は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
   major(effectOnly('false_reflect_wall', 'いつわりの反射壁', [], '攻撃反射は現在の撃破確率計算には影響しないため数値処理しません。'), 'other'),
 
-  // ユーザー指定で「主要技」に追加している技（コマンドサンプル一覧外を含む）。
+  // ユーザー指定の追加主要技（Wikiのコマンドサンプル一覧外を含む）。
+  // 吸いつくしは、指定どおり自身の攻撃+15だけを計算し、味方へのダメージ・回復は無視する。
+  major(buff('suck_dry', '吸いつくし',
+    { type: 'atkBuff', target: 'self', mode: 'add', value: '15', duration: '3' },
+    [], '撃破確率計算では自身の攻撃+15のみ反映し、味方へのダメージ・回復は無視します。'), 'attack'),
   major(attack('poison_bite', 'どくかみつき', {
     multiplier: '140', attribute: 'poison', attackType: 'physical', effects: [{ type: 'poison' }]
   }), 'attack'),
@@ -195,7 +191,7 @@ export const SKILL_PRESETS = Object.freeze([
   // ---------------------------------------------------------------------------
   attack('foot_sweep', '足ばらい', {
     multiplier: '40', attribute: 'none', attackType: 'physical',
-    effects: [{ type: 'defenseDown', mode: 'mult', value: '120', duration: '99', expiry: 'sourceNextActionStart' }],
+    effects: [{ type: 'defenseDown', mode: 'mult', value: '20', duration: '99', expiry: 'sourceNextActionStart' }],
     note: '敵の被ダメージ1.2倍。使用者の次の行動開始まで。'
   }),
   attack('attack_bang', 'こうげき!', { multiplier: '100', attribute: 'none', attackType: 'physical' }),

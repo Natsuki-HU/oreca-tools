@@ -1,4 +1,4 @@
-// 撃破確率シミュレータ v0.4.4
+// 撃破確率シミュレータ v0.4.6
 // 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([
@@ -68,15 +68,15 @@ export const ENEMY_EFFECT_TYPES = Object.freeze([
 ]);
 
 function defaultAllyBuff() {
-  return { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' };
+  return { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' };
 }
 
 function defaultEnemyBuff() {
-  return { type: 'enemyAtkBuff', mode: 'mult', value: '150', duration: '1' };
+  return { type: 'enemyAtkBuff', mode: 'mult', value: '50', duration: '1' };
 }
 
 function defaultEnemyEffect() {
-  return { type: 'none', target: 'all', mode: 'mult', value: '80', duration: '1' };
+  return { type: 'none', target: 'all', mode: 'mult', value: '20', duration: '1' };
 }
 
 function defaultAttackAction() {
@@ -176,8 +176,8 @@ export const DEFAULT_STATE = Object.freeze({
   ],
   turns: [{
     allyActions: [
-      { ...defaultAttackAction(), kind: 'buff', skillName: 'ロキブランド', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '2' } },
-      { ...defaultAttackAction(), kind: 'buff', skillName: '鬼の気合入れ', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '1' } },
+      { ...defaultAttackAction(), kind: 'buff', skillName: 'ロキブランド', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '2' } },
+      { ...defaultAttackAction(), kind: 'buff', skillName: '鬼の気合入れ', buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '100', duration: '1' } },
       { ...defaultSkipAction(), skillName: '' }
     ],
     enemyAction: { enabled: true, effect: defaultEnemyEffect() }
@@ -364,6 +364,9 @@ function hpRange(hpDist) {
 
 function normalizeTarget(effect, actorIndex, allyCount) {
   const target = effect.target ?? 'self';
+  if (Array.isArray(target)) {
+    return [...new Set(target.flatMap(item => normalizeTarget({ target: item }, actorIndex, allyCount)))];
+  }
   if (target === 'all') return Array.from({ length: allyCount }, (_, i) => i);
   if (target === 'self') return [actorIndex];
   if (target === 'others') return Array.from({ length: allyCount }, (_, i) => i).filter(i => i !== actorIndex);
@@ -375,9 +378,23 @@ function normalizeTarget(effect, actorIndex, allyCount) {
   return [];
 }
 
+function effectDirection(type) {
+  // +1: 数値が上がる（攻撃/速度アップ、敵の防御ダウン=被ダメ増）
+  // -1: 数値が下がる（デバフ、敵の防御アップ=被ダメ減）
+  return ['allyAtkDebuff', 'allySpeedDebuff', 'speedDown', 'enemyDefenseBuff'].includes(type) ? -1 : 1;
+}
+
+function effectAmountToMod(effect, defaultMode = 'mult') {
+  const amount = parseNumber(effect.value ?? '0', '効果量', { min: 0 });
+  const mode = effect.mode ?? defaultMode;
+  const direction = effectDirection(effect.type);
+  if (mode === 'add') return { mode, value: direction * amount };
+  return { mode: 'mult', value: 100 + direction * amount };
+}
+
 function addTimedMod(list, effect, seq, defaultMode = 'mult', sourceContext = null) {
-  const value = parseNumber(effect.value ?? '100', '補正値');
-  const common = { mode: effect.mode ?? defaultMode, value, seq };
+  const mod = effectAmountToMod(effect, defaultMode);
+  const common = { ...mod, seq };
   if (effect.expiry && sourceContext) {
     const offset = effect.expiry === 'sourceNextActionEnd' ? 2 : 1;
     list.push({
@@ -463,16 +480,12 @@ function enemyEffect(runtime, effect, hpDist) {
   runtime.seq += 1;
   switch (effect.type) {
     case 'allyAtkDebuff': {
-      const targets = effect.target === 'all'
-        ? Array.from({ length: runtime.allyCount }, (_, i) => i)
-        : normalizeTarget(effect, 0, runtime.allyCount);
+      const targets = normalizeTarget(effect, 0, runtime.allyCount);
       for (const i of targets) addTimedMod(runtime.allies[i].attackMods, effect, runtime.seq);
       return hpDist;
     }
     case 'allySpeedDebuff': {
-      const targets = effect.target === 'all'
-        ? Array.from({ length: runtime.allyCount }, (_, i) => i)
-        : normalizeTarget(effect, 0, runtime.allyCount);
+      const targets = normalizeTarget(effect, 0, runtime.allyCount);
       for (const i of targets) addTimedMod(runtime.allies[i].speedMods, effect, runtime.seq);
       return hpDist;
     }

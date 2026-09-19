@@ -92,14 +92,14 @@ console.log('kill-engine tests: OK');
   s.allies[0].speed = '100';
   s.turns[0].allyActions[0] = {
     kind: 'buff', skillMultiplier: '200', attackAttribute: 'none', hits: '1',
-    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '2' },
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '100', duration: '2' },
     effects: []
   };
   s.turns[0].enemyAction.enabled = false;
   s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));
   s.turns[1].allyActions[0] = {
     kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1',
-    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' },
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' },
     effects: []
   };
   const r = simulateKillProbability(s);
@@ -116,7 +116,7 @@ console.log('kill-engine tests: OK');
   base.allies[0].speed = '100';
   base.turns[0].allyActions[0] = {
     kind: 'attack', skillMultiplier: '150', attackAttribute: 'none', hits: '1',
-    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '1' },
+    buff: { type: 'atkBuff', target: 'self', mode: 'mult', value: '50', duration: '1' },
     effects: []
   };
   base.turns[0].enemyAction.enabled = false;
@@ -191,12 +191,12 @@ console.log('kill-engine tests: OK');
   const foot = SKILL_PRESET_BY_ID.get('foot_sweep');
   assert.equal(foot.attackType, 'physical');
   assert.deepEqual(foot.effects[0], {
-    type: 'defenseDown', mode: 'mult', value: '120', duration: '99', expiry: 'sourceNextActionStart'
+    type: 'defenseDown', mode: 'mult', value: '20', duration: '99', expiry: 'sourceNextActionStart'
   });
   const marking = SKILL_PRESET_BY_ID.get('marking_arrow');
   assert.equal(marking.attackType, 'physical');
   assert.deepEqual(marking.effects[0], {
-    type: 'defenseDown', mode: 'mult', value: '140', duration: '99', expiry: 'sourceNextActionEnd'
+    type: 'defenseDown', mode: 'mult', value: '40', duration: '99', expiry: 'sourceNextActionEnd'
   });
 }
 
@@ -208,16 +208,34 @@ console.log('kill-engine tests: OK');
   for (const id of [
     'loki_brand', 'oni_spirit', 'sea_king_gaze', 'spirit_blessing', 'growl', 'sun_hymn',
     'sword_dance', 'name_announcement', 'fire2', 'fire3', 'aqua2', 'aqua3', 'wind2',
-    'marking_arrow', 'self_destruct', 'suck_dry', 'bubble_grand', 'rengeki',
+    'marking_arrow', 'self_destruct', 'bubble_grand', 'rengeki',
     'heat_wave', 'ice_storm_strike', 'false_reflect_wall',
     // ユーザー指定の追加枠
-    'poison_bite', 'melting_breath', 'epidemic_glass'
+    'epidemic_glass', 'poison_bite', 'melting_breath', 'suck_dry'
   ]) assert.ok(majorIds.has(id), `${id} should be a major skill`);
 
   for (const id of [
     'foot_sweep', 'attack_bang', 'dragon_tail', 'aqua_breath', 'shining_breath',
-    'fire1', 'ice1', 'thunder1', 'meteor', 'purifying_flame', 'shiden', 'critical_hit'
+    'fire1', 'ice1', 'thunder1', 'meteor', 'purifying_flame', 'shiden', 'critical_hit',
+    'ninja_thunder'
   ]) assert.equal(majorIds.has(id), false, `${id} must stay character-preset-only`);
+}
+
+
+// 12b) ユーザー指定で復帰した追加主要技の内容を保持する。
+{
+  const suck = SKILL_PRESET_BY_ID.get('suck_dry');
+  assert.equal(suck.major, true);
+  assert.equal(suck.kind, 'buff');
+  assert.deepEqual(suck.buff, { type: 'atkBuff', target: 'self', mode: 'add', value: '15', duration: '3' });
+
+  const bite = SKILL_PRESET_BY_ID.get('poison_bite');
+  assert.deepEqual([bite.skillMultiplier, bite.attackAttribute, bite.attackType], ['140', 'poison', 'physical']);
+  assert.deepEqual(bite.effects, [{ type: 'poison' }]);
+
+  const melt = SKILL_PRESET_BY_ID.get('melting_breath');
+  assert.deepEqual([melt.skillMultiplier, melt.deadlyPoisonSkillMultiplier, melt.attackType], ['60', '120', 'other']);
+  assert.deepEqual(melt.effects, [{ type: 'poisonToDeadly' }]);
 }
 
 // 13) ファイア!! / アクア!! だけは例外として !!! 版も主要技に持つ。
@@ -240,4 +258,42 @@ console.log('kill-engine tests: OK');
   const poisonCrush = SKILL_PRESET_BY_ID.get('poison_crush');
   assert.equal(poisonCrush.skillMultiplier, '80');
   assert.equal(poisonCrush.poisonedSkillMultiplier, '105');
+}
+
+
+// 15) バフ/デバフの割合入力は「効果量」。アップ20→×120%、ダウン20→×80%。
+{
+  const s = cloneDefaultState();
+  s.allyCount = 1;
+  s.enemy.maxHp = '115';
+  s.enemy.speed = '10';
+  s.allies[0].attack = '100';
+  s.allies[0].speed = '100';
+  s.turns[0].allyActions[0] = {
+    kind: 'buff', skillMultiplier: '100', attackAttribute: 'none', hits: '1',
+    buff: { type: 'atkBuff', target: ['ally1'], mode: 'mult', value: '20', duration: '2' }, effects: []
+  };
+  s.turns[0].enemyAction.enabled = false;
+  s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));
+  s.turns[1].allyActions[0] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
+  const r = simulateKillProbability(s);
+  assert.ok(r.killChance > 0);
+}
+
+// 16) バフ対象は配列で複数指定できる。
+{
+  const s = cloneDefaultState();
+  s.allyCount = 2;
+  s.enemy.maxHp = '180';
+  s.enemy.speed = '10';
+  s.allies[0].attack = '1'; s.allies[0].speed = '100';
+  s.allies[1].attack = '100'; s.allies[1].speed = '90';
+  s.turns[0].allyActions[0] = { kind: 'buff', buff: { type: 'atkBuff', target: ['ally1','ally2'], mode: 'mult', value: '100', duration: '2' }, effects: [] };
+  s.turns[0].allyActions[1] = { kind: 'skip', effects: [] };
+  s.turns[0].enemyAction.enabled = false;
+  s.turns.push(JSON.parse(JSON.stringify(s.turns[0])));
+  s.turns[1].allyActions[0] = { kind: 'skip', effects: [] };
+  s.turns[1].allyActions[1] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
+  const r = simulateKillProbability(s);
+  assert.ok(r.killChance > 0);
 }
