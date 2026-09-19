@@ -1,4 +1,4 @@
-const CACHE_NAME = 'oreca-tools-v0.4.0';
+const CACHE_NAME = 'oreca-tools-v0.4.3';
 const CORE = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const CORE = [
   './kill/index.html',
   './kill/ui.js',
   './kill/engine.js',
+  './kill/presets.js',
   './manifest.webmanifest',
   './icons/icon-180.png',
   './icons/icon-192.png',

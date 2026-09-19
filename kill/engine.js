@@ -1,4 +1,4 @@
-// 撃破確率シミュレータ v0.4.2
+// 撃破確率シミュレータ v0.4.3
 // 公開用の撃破確率計算に必要な戦闘要素だけを扱います。
 
 export const DEFENDER_ATTRIBUTES = Object.freeze([
@@ -9,6 +9,14 @@ export const DEFENDER_ATTRIBUTES = Object.freeze([
 // 撃破確率ページで選択できる敵属性。敵には無・光・闇属性は存在しないため除外。
 export const ENEMY_ATTRIBUTE_OPTIONS = Object.freeze([
   ['fire', '火'], ['water', '水'], ['earth', '土'], ['wind', '風']
+]);
+
+export const ENEMY_RACE_OPTIONS = Object.freeze([
+  ['normal', '通常'], ['undead', 'アンデッド']
+]);
+
+export const ATTACK_TYPE_OPTIONS = Object.freeze([
+  ['physical', '物理'], ['magic', '魔法'], ['other', 'それ以外']
 ]);
 
 export const ATTACK_ATTRIBUTES = Object.freeze([
@@ -44,7 +52,9 @@ export const ALLY_EFFECT_TYPES = Object.freeze([
   ['defenseDown', '敵の防御ダウン'],
   ['speedDown', '敵の素早さダウン'],
   ['poison', '毒'],
-  ['deadlyPoison', '猛毒']
+  ['deadlyPoison', '猛毒'],
+  ['poisonToDeadly', '毒→猛毒'],
+  ['weaknessBuff', '弱点属性強化']
 ]);
 
 export const ENEMY_EFFECT_TYPES = Object.freeze([
@@ -73,19 +83,32 @@ function defaultAttackAction() {
   return {
     kind: 'attack',
     skillMultiplier: '200',
+    skillMultiplierMin: '',
+    skillMultiplierMax: '',
+    skillMultiplierStep: '',
     attackAttribute: 'none',
+    attackAttribute2: 'none',
+    attackType: 'physical',
     hits: '1',
+    hitsMin: '',
+    hitsMax: '',
+    undeadSkillMultiplier: '',
+    deadlyPoisonSkillMultiplier: '',
     buff: defaultAllyBuff(),
     effects: []
   };
 }
 
 function defaultSkipAction() {
-  return { kind: 'skip', skillMultiplier: '200', attackAttribute: 'none', hits: '1', buff: defaultAllyBuff(), effects: [] };
+  return {
+    kind: 'skip', skillMultiplier: '200', skillMultiplierMin: '', skillMultiplierMax: '', skillMultiplierStep: '',
+    attackAttribute: 'none', attackAttribute2: 'none', attackType: 'physical', hits: '1', hitsMin: '', hitsMax: '',
+    undeadSkillMultiplier: '', deadlyPoisonSkillMultiplier: '', buff: defaultAllyBuff(), effects: []
+  };
 }
 
 export const DEFAULT_STATE = Object.freeze({
-  enemy: { maxHp: '1500', attribute: 'fire', speed: '45' },
+  enemy: { maxHp: '1500', attribute: 'fire', race: 'normal', speed: '45' },
   characterStats: {
     son_goku: { attack: '84', speed: '78' },
     gyumao: { attack: '94', speed: '15' },
@@ -200,9 +223,37 @@ function attrCoefficient(attackAttr, defenderAttr) {
   return ATTRIBUTE_TABLE[a][d];
 }
 
-function oneHitDistribution({ attack, skillMultiplier, attackAttribute, defenderAttribute, defenseMods }) {
+function boostedAttrCoefficient(coefficient, weaknessBoost) {
+  if (!weaknessBoost) return coefficient;
+  if (coefficient === 1500) return 1900;
+  if (coefficient === 1400) return 1800;
+  return coefficient;
+}
+
+function speciesCoefficient(defenderRace, attackType) {
+  if (defenderRace !== 'undead') return 1000;
+  if (attackType === 'physical') return 800;
+  if (attackType === 'magic') return 1200;
+  return 1000;
+}
+
+function attackAttributesFromConfig(config) {
+  if (Array.isArray(config.attackAttributes) && config.attackAttributes.length) return config.attackAttributes;
+  const attrs = [config.attackAttribute ?? 'none'];
+  if (config.attackAttribute2 && config.attackAttribute2 !== 'none') attrs.push(config.attackAttribute2);
+  return attrs;
+}
+
+function oneHitDistribution({
+  attack, skillMultiplier, attackAttribute, attackAttribute2, attackAttributes, defenderAttribute, defenderRace,
+  attackType, defenseMods, weaknessBoost
+}) {
   let base = trunc0(attack * skillMultiplier / 100);
-  base = trunc0(base * attrCoefficient(attackAttribute, defenderAttribute) / 1000);
+  for (const attr of attackAttributesFromConfig({ attackAttribute, attackAttribute2, attackAttributes })) {
+    const coefficient = boostedAttrCoefficient(attrCoefficient(attr, defenderAttribute), weaknessBoost);
+    base = trunc0(base * coefficient / 1000);
+  }
+  base = trunc0(base * speciesCoefficient(defenderRace, attackType) / 1000);
 
   const counts = new Map();
   for (let r = -50; r <= 50; r++) {
@@ -225,13 +276,51 @@ function convolveDamage(a, b) {
   return out;
 }
 
+function decimalRange(min, max, step) {
+  const count = Math.max(0, Math.round((max - min) / step));
+  return Array.from({ length: count + 1 }, (_, i) => min + i * step);
+}
+
+function averageDistributions(distributions) {
+  const out = new Map();
+  if (!distributions.length) return out;
+  const weight = 1 / distributions.length;
+  for (const dist of distributions) {
+    for (const [value, probability] of dist) out.set(value, (out.get(value) ?? 0) + probability * weight);
+  }
+  return out;
+}
+
 export function attackDamageDistribution(config) {
-  const hits = parseIntValue(config.hits, 'ヒット数', { min: 1, max: 50 });
-  const skillMultiplier = parseNumber(config.skillMultiplier, '技倍率', { min: 0 });
-  const one = oneHitDistribution({ ...config, skillMultiplier });
-  let total = new Map([[0, 1]]);
-  for (let i = 0; i < hits; i++) total = convolveDamage(total, one);
-  return total;
+  const fixedMultiplier = parseNumber(config.skillMultiplier, '技倍率', { min: 0 });
+  const hasMultiplierRange = config.skillMultiplierMin !== '' && config.skillMultiplierMin != null
+    && config.skillMultiplierMax !== '' && config.skillMultiplierMax != null;
+  let multipliers = [fixedMultiplier];
+  if (hasMultiplierRange) {
+    const min = parseNumber(config.skillMultiplierMin, '技倍率下限', { min: 0 });
+    const max = parseNumber(config.skillMultiplierMax, '技倍率上限', { min });
+    const step = parseNumber(config.skillMultiplierStep || '0.1', '技倍率刻み', { min: 0.000001 });
+    multipliers = decimalRange(min, max, step);
+  }
+  const one = averageDistributions(multipliers.map(skillMultiplier => oneHitDistribution({ ...config, skillMultiplier })));
+
+  const fixedHits = parseIntValue(config.hits, 'ヒット数', { min: 1, max: 50 });
+  const hasHitRange = config.hitsMin !== '' && config.hitsMin != null && config.hitsMax !== '' && config.hitsMax != null;
+  let hitCounts = [fixedHits];
+  if (hasHitRange) {
+    const minHits = parseIntValue(config.hitsMin, '最小ヒット数', { min: 1, max: 50 });
+    const maxHits = parseIntValue(config.hitsMax, '最大ヒット数', { min: 1, max: 50 });
+    if (maxHits < minHits) throw new Error('ヒット数範囲が不正です');
+    hitCounts = Array.from({ length: maxHits - minHits + 1 }, (_, i) => minHits + i);
+  }
+
+  const totals = [];
+  for (const hits of hitCounts) {
+    let total = new Map([[0, 1]]);
+    for (let i = 0; i < hits; i++) total = convolveDamage(total, one);
+    totals.push(total);
+  }
+  return averageDistributions(totals);
 }
 
 function mapHpDistribution(hpDist, mapper) {
@@ -284,51 +373,84 @@ function normalizeTarget(effect, actorIndex, allyCount) {
   return [];
 }
 
-function addTimedMod(list, effect, seq, defaultMode = 'mult') {
-  const duration = Math.max(1, parseIntValue(effect.duration ?? '1', '継続ターン', { min: 1, max: 99 }));
+function addTimedMod(list, effect, seq, defaultMode = 'mult', sourceContext = null) {
   const value = parseNumber(effect.value ?? '100', '補正値');
-  list.push({ mode: effect.mode ?? defaultMode, value, remaining: duration, seq });
+  const common = { mode: effect.mode ?? defaultMode, value, seq };
+  if (effect.expiry && sourceContext) {
+    const offset = effect.expiry === 'sourceNextActionEnd' ? 2 : 1;
+    list.push({
+      ...common,
+      expiry: effect.expiry,
+      sourceActorIndex: sourceContext.actorIndex,
+      expiresAtActionCount: sourceContext.actionsTaken + offset
+    });
+    return;
+  }
+  const duration = Math.max(1, parseIntValue(effect.duration ?? '1', '継続ターン', { min: 1, max: 99 }));
+  list.push({ ...common, remaining: duration });
+}
+
+function addTimedFlag(list, effect, seq) {
+  const duration = Math.max(1, parseIntValue(effect.duration ?? '1', '継続ターン', { min: 1, max: 99 }));
+  list.push({ remaining: duration, seq });
 }
 
 function decrementTimedEffects(runtime) {
   const dec = list => list
-    .map(x => ({ ...x, remaining: x.remaining - 1 }))
-    .filter(x => x.remaining > 0);
+    .map(x => Number.isFinite(x.remaining) ? ({ ...x, remaining: x.remaining - 1 }) : x)
+    .filter(x => !Number.isFinite(x.remaining) || x.remaining > 0);
   for (const ally of runtime.allies) {
     ally.attackMods = dec(ally.attackMods);
     ally.speedMods = dec(ally.speedMods);
+    ally.weaknessMods = dec(ally.weaknessMods);
   }
   runtime.enemy.speedMods = dec(runtime.enemy.speedMods);
   runtime.enemy.attackMods = dec(runtime.enemy.attackMods);
   runtime.enemy.defenseMods = dec(runtime.enemy.defenseMods);
 }
 
+function expireSourceLinkedMods(runtime, actorIndex, phase) {
+  const actionsTaken = runtime.allies[actorIndex].actionsTaken;
+  const expiry = phase === 'start' ? 'sourceNextActionStart' : 'sourceNextActionEnd';
+  const keep = mod => !(mod.expiry === expiry && mod.sourceActorIndex === actorIndex && mod.expiresAtActionCount <= actionsTaken);
+  runtime.enemy.defenseMods = runtime.enemy.defenseMods.filter(keep);
+  runtime.enemy.speedMods = runtime.enemy.speedMods.filter(keep);
+  runtime.enemy.attackMods = runtime.enemy.attackMods.filter(keep);
+}
+
 function allyEffect(runtime, effect, actorIndex) {
   runtime.seq += 1;
+  const sourceContext = { actorIndex, actionsTaken: runtime.allies[actorIndex].actionsTaken };
   switch (effect.type) {
     case 'atkBuff': {
       for (const i of normalizeTarget(effect, actorIndex, runtime.allyCount)) {
-        addTimedMod(runtime.allies[i].attackMods, effect, runtime.seq);
+        addTimedMod(runtime.allies[i].attackMods, effect, runtime.seq, 'mult', sourceContext);
       }
       break;
     }
     case 'speedBuff': {
       for (const i of normalizeTarget(effect, actorIndex, runtime.allyCount)) {
-        addTimedMod(runtime.allies[i].speedMods, effect, runtime.seq);
+        addTimedMod(runtime.allies[i].speedMods, effect, runtime.seq, 'mult', sourceContext);
       }
       break;
     }
     case 'defenseDown':
-      addTimedMod(runtime.enemy.defenseMods, effect, runtime.seq);
+      addTimedMod(runtime.enemy.defenseMods, effect, runtime.seq, 'mult', sourceContext);
       break;
     case 'speedDown':
-      addTimedMod(runtime.enemy.speedMods, effect, runtime.seq);
+      addTimedMod(runtime.enemy.speedMods, effect, runtime.seq, 'mult', sourceContext);
       break;
     case 'poison':
       runtime.enemy.poison = 'poison';
       break;
     case 'deadlyPoison':
       runtime.enemy.poison = 'deadlyPoison';
+      break;
+    case 'poisonToDeadly':
+      if (runtime.enemy.poison === 'poison') runtime.enemy.poison = 'deadlyPoison';
+      break;
+    case 'weaknessBuff':
+      for (const i of normalizeTarget(effect, actorIndex, runtime.allyCount)) addTimedFlag(runtime.allies[i].weaknessMods, effect, runtime.seq);
       break;
     default:
       break;
@@ -421,9 +543,19 @@ function ensureAction(action, side = 'ally') {
   const defaultBuff = side === 'enemy' ? defaultEnemyBuff() : defaultAllyBuff();
   return {
     kind: action?.kind ?? 'skip',
+    skillPresetId: action?.skillPresetId ?? '',
     skillMultiplier: action?.skillMultiplier ?? '200',
+    skillMultiplierMin: action?.skillMultiplierMin ?? '',
+    skillMultiplierMax: action?.skillMultiplierMax ?? '',
+    skillMultiplierStep: action?.skillMultiplierStep ?? '',
     attackAttribute: action?.attackAttribute ?? 'none',
+    attackAttribute2: action?.attackAttribute2 ?? 'none',
+    attackType: action?.attackType ?? 'physical',
     hits: action?.hits ?? '1',
+    hitsMin: action?.hitsMin ?? '',
+    hitsMax: action?.hitsMax ?? '',
+    undeadSkillMultiplier: action?.undeadSkillMultiplier ?? '',
+    deadlyPoisonSkillMultiplier: action?.deadlyPoisonSkillMultiplier ?? '',
     buff: { ...defaultBuff, ...(action?.buff ?? {}) },
     effects: Array.isArray(action?.effects) ? action.effects : [],
     skillName: action?.skillName ?? ''
@@ -460,14 +592,17 @@ export function simulateKillProbability(state) {
       baseAttack: parseNumber(state.allies?.[i]?.attack, `キャラ${i + 1}の攻撃力`, { min: 0 }),
       baseSpeed: parseNumber(state.allies?.[i]?.speed, `キャラ${i + 1}の素早さ`, { min: 0 }),
       attackMods: [],
-      speedMods: []
+      speedMods: [],
+      weaknessMods: [],
+      actionsTaken: 0
     })),
     enemy: {
       baseSpeed: enemyBaseSpeed,
       speedMods: [],
       attackMods: [],
       defenseMods: [],
-      poison: 'none'
+      poison: 'none',
+      race: state.enemy?.race === 'undead' ? 'undead' : 'normal'
     }
   };
 
@@ -484,6 +619,7 @@ export function simulateKillProbability(state) {
       const actor = order[pos];
 
       if (actor.side === 'ally') {
+        expireSourceLinkedMods(runtime, actor.index, 'start');
         const resolved = resolveAction(turns, turnIndex, 'ally', actor.index);
         const action = resolved.action;
         const samePrefix = resolved.repeated ? '同行動→' : '';
@@ -493,19 +629,33 @@ export function simulateKillProbability(state) {
             runtime.allies[actor.index].attackMods,
             { clampMin: 1, clampMax: 999 }
           );
+          let skillMultiplier = action.skillMultiplier;
+          if (runtime.enemy.race === 'undead' && action.undeadSkillMultiplier !== '') skillMultiplier = action.undeadSkillMultiplier;
+          if (runtime.enemy.poison === 'deadlyPoison' && action.deadlyPoisonSkillMultiplier !== '') skillMultiplier = action.deadlyPoisonSkillMultiplier;
           const damageDist = attackDamageDistribution({
             attack,
-            skillMultiplier: action.skillMultiplier,
+            skillMultiplier,
+            skillMultiplierMin: action.skillMultiplierMin,
+            skillMultiplierMax: action.skillMultiplierMax,
+            skillMultiplierStep: action.skillMultiplierStep,
             attackAttribute: action.attackAttribute,
+            attackAttribute2: action.attackAttribute2,
+            attackType: action.attackType,
             defenderAttribute: state.enemy?.attribute ?? 'none',
+            defenderRace: runtime.enemy.race,
             defenseMods: runtime.enemy.defenseMods,
-            hits: action.hits
+            weaknessBoost: runtime.allies[actor.index].weaknessMods.length > 0,
+            hits: action.hits,
+            hitsMin: action.hitsMin,
+            hitsMax: action.hitsMax
           });
           hpDist = applyAttackToHp(hpDist, damageDist);
           recordTimeline(timeline, `キャラ${actor.index + 1} ${samePrefix}攻撃`, hpDist, turnIndex + 1, 'attack');
         } else if (action.kind === 'buff') {
           allyEffect(runtime, action.buff, actor.index);
           recordTimeline(timeline, `キャラ${actor.index + 1} ${samePrefix}バフ`, hpDist, turnIndex + 1, 'buff');
+        } else if (action.kind === 'effect') {
+          recordTimeline(timeline, `キャラ${actor.index + 1} ${samePrefix}効果のみ`, hpDist, turnIndex + 1, 'effect');
         } else {
           recordTimeline(timeline, `キャラ${actor.index + 1} ${samePrefix}行動スキップ`, hpDist, turnIndex + 1, 'skip');
         }
@@ -513,6 +663,8 @@ export function simulateKillProbability(state) {
         if (action.kind !== 'skip') {
           for (const effect of action.effects) allyEffect(runtime, effect, actor.index);
         }
+        runtime.allies[actor.index].actionsTaken += 1;
+        expireSourceLinkedMods(runtime, actor.index, 'end');
       } else {
         const rawEnemyAction = turn.enemyAction ?? { enabled: false, effect: { type: 'none' } };
         let effect = rawEnemyAction.effect ?? { type: 'none' };

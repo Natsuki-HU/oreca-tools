@@ -2,13 +2,22 @@ import { APP_VERSION } from '../assets/version.js';
 import {
   ALLY_EFFECT_TYPES,
   ATTACK_ATTRIBUTES,
+  ATTACK_TYPE_OPTIONS,
   ENEMY_ATTRIBUTE_OPTIONS,
+  ENEMY_RACE_OPTIONS,
   ENEMY_EFFECT_TYPES,
   cloneDefaultState,
   simulateKillProbability
 } from './engine.js';
+import {
+  SKILL_PRESETS,
+  SKILL_PRESET_BY_ID,
+  caminekoPresetForEnemy,
+  presetIdForSkillName
+} from './presets.js';
 
-const STORAGE_KEY = 'oreca-tools.kill.v0.4.2';
+const STORAGE_KEY = 'oreca-tools.kill.v0.4.3';
+const LEGACY_STORAGE_KEYS = ['oreca-tools.kill.v0.4.2', 'oreca-tools.kill.v0.4.1', 'oreca-tools.kill.v0.4.0'];
 const root = document.getElementById('killRoot');
 const resetButton = document.getElementById('resetButton');
 
@@ -127,17 +136,36 @@ function normalizeState(saved) {
 
   const allowedEnemyAttrs = new Set(ENEMY_ATTRIBUTE_OPTIONS.map(([value]) => value));
   if (!allowedEnemyAttrs.has(state.enemy.attribute)) state.enemy.attribute = 'fire';
+  const allowedEnemyRaces = new Set(ENEMY_RACE_OPTIONS.map(([value]) => value));
+  if (!allowedEnemyRaces.has(state.enemy.race)) state.enemy.race = 'normal';
 
   for (const turn of state.turns) {
-    turn.allyActions = Array.from({ length: 3 }, (_, i) => ({
-      kind: turn.allyActions?.[i]?.kind ?? 'skip',
-      skillMultiplier: turn.allyActions?.[i]?.skillMultiplier ?? '200',
-      attackAttribute: turn.allyActions?.[i]?.attackAttribute ?? 'none',
-      hits: turn.allyActions?.[i]?.hits ?? '1',
-      buff: { ...defaultPrimaryBuff('ally'), ...(turn.allyActions?.[i]?.buff ?? {}) },
-      effects: Array.isArray(turn.allyActions?.[i]?.effects) ? turn.allyActions[i].effects : [],
-      skillName: turn.allyActions?.[i]?.skillName ?? ''
-    }));
+    turn.allyActions = Array.from({ length: 3 }, (_, i) => {
+      const raw = turn.allyActions?.[i] ?? {};
+      const presetId = raw.skillPresetId ?? presetIdForSkillName(raw.skillName ?? '');
+      const normalized = {
+        kind: raw.kind ?? 'skip',
+        skillPresetId: presetId,
+        skillMultiplier: raw.skillMultiplier ?? '200',
+        skillMultiplierMin: raw.skillMultiplierMin ?? '',
+        skillMultiplierMax: raw.skillMultiplierMax ?? '',
+        skillMultiplierStep: raw.skillMultiplierStep ?? '',
+        attackAttribute: raw.attackAttribute ?? 'none',
+        attackAttribute2: raw.attackAttribute2 ?? 'none',
+        attackType: raw.attackType ?? 'physical',
+        hits: raw.hits ?? '1',
+        hitsMin: raw.hitsMin ?? '',
+        hitsMax: raw.hitsMax ?? '',
+        undeadSkillMultiplier: raw.undeadSkillMultiplier ?? '',
+        deadlyPoisonSkillMultiplier: raw.deadlyPoisonSkillMultiplier ?? '',
+        buff: { ...defaultPrimaryBuff('ally'), ...(raw.buff ?? {}) },
+        effects: Array.isArray(raw.effects) ? raw.effects : [],
+        skillName: raw.skillName ?? ''
+      };
+      // v0.4.2以前にはskillPresetIdが無かったため、既知技は一度だけプリセット値へ移行する。
+      if (raw.skillPresetId === undefined && presetId) applySkillPresetToAction(normalized, presetId);
+      return normalized;
+    });
     const legacyEnemyEffect = Array.isArray(turn.enemyAction?.effects) && turn.enemyAction.effects.length
       ? turn.enemyAction.effects[0]
       : turn.enemyAction?.kind === 'buff' ? turn.enemyAction?.buff : null;
@@ -151,7 +179,13 @@ function normalizeState(saved) {
 
 function loadState() {
   try {
-    return normalizeState(JSON.parse(localStorage.getItem(STORAGE_KEY)));
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current) return normalizeState(JSON.parse(current));
+    for (const key of LEGACY_STORAGE_KEYS) {
+      const legacy = localStorage.getItem(key);
+      if (legacy) return normalizeState(JSON.parse(legacy));
+    }
+    return normalizeState(cloneDefaultState());
   } catch {
     return normalizeState(cloneDefaultState());
   }
@@ -172,6 +206,63 @@ function characterOptionsHtml(selected) {
   return `<option value="" ${!selected ? 'selected' : ''}>選択なし</option><optgroup label="汎用">${render(general)}</optgroup><optgroup label="条件">${render(condition)}</optgroup>`;
 }
 
+function skillPresetOptionsHtml(selected) {
+  const buffs = SKILL_PRESETS.filter(x => x.selectable !== false && (x.kind === 'buff' || x.kind === 'effect'));
+  const attacks = SKILL_PRESETS.filter(x => x.selectable !== false && x.kind === 'attack');
+  const render = items => items.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === selected ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
+  return `<option value="" ${!selected ? 'selected' : ''}>手動入力</option><optgroup label="強化・効果">${render(buffs)}</optgroup><optgroup label="攻撃技">${render(attacks)}</optgroup>`;
+}
+
+function resetAttackPresetFields(action) {
+  action.skillMultiplier = '100';
+  action.skillMultiplierMin = '';
+  action.skillMultiplierMax = '';
+  action.skillMultiplierStep = '';
+  action.attackAttribute = 'none';
+  action.attackAttribute2 = 'none';
+  action.attackType = 'physical';
+  action.hits = '1';
+  action.hitsMin = '';
+  action.hitsMax = '';
+  action.undeadSkillMultiplier = '';
+  action.deadlyPoisonSkillMultiplier = '';
+}
+
+function applySkillPresetToAction(action, presetId) {
+  const skill = SKILL_PRESET_BY_ID.get(presetId);
+  action.skillPresetId = presetId || '';
+  if (!skill) return;
+
+  action.kind = skill.kind;
+  action.skillName = skill.skillName;
+  action.effects = deepClone(skill.effects ?? []);
+  action.presetNote = skill.note ?? '';
+  resetAttackPresetFields(action);
+
+  if (skill.kind === 'attack') {
+    action.skillMultiplier = skill.skillMultiplier ?? '100';
+    action.skillMultiplierMin = skill.skillMultiplierMin ?? '';
+    action.skillMultiplierMax = skill.skillMultiplierMax ?? '';
+    action.skillMultiplierStep = skill.skillMultiplierStep ?? '';
+    action.attackAttribute = skill.attackAttribute ?? 'none';
+    action.attackAttribute2 = skill.attackAttribute2 ?? 'none';
+    action.attackType = skill.attackType ?? 'physical';
+    action.hits = skill.hits ?? '1';
+    action.hitsMin = skill.hitsMin ?? '';
+    action.hitsMax = skill.hitsMax ?? '';
+    action.undeadSkillMultiplier = skill.undeadSkillMultiplier ?? '';
+    action.deadlyPoisonSkillMultiplier = skill.deadlyPoisonSkillMultiplier ?? '';
+  } else if (skill.kind === 'buff') {
+    action.buff = deepClone(skill.buff ?? defaultPrimaryBuff('ally'));
+  }
+}
+
+function presetIdForCharacterSkill(characterId, skillName) {
+  if (characterId === 'camineko') return caminekoPresetForEnemy(state.enemy.attribute);
+  if (characterId === 'dark_bahamut') return 'dark_bahamut_breath';
+  return presetIdForSkillName(skillName);
+}
+
 function applyCharacterPreset(allyIndex, characterId) {
   const preset = CHARACTER_BY_ID.get(characterId) ?? CHARACTER_BY_ID.get('');
   const ally = state.allies[allyIndex];
@@ -183,26 +274,32 @@ function applyCharacterPreset(allyIndex, characterId) {
   state.turns.forEach((turn, turnIndex) => {
     const action = turn.allyActions[allyIndex];
     if (!characterId) {
-      action.kind = 'skip'; action.skillName = ''; action.effects = [];
+      action.kind = 'skip'; action.skillName = ''; action.skillPresetId = ''; action.effects = [];
       return;
     }
     if (turnIndex === 0) {
-      action.kind = preset.kind ?? 'attack';
-      action.skillName = preset.skill;
-      if (characterId === 'son_goku') action.buff = { type: 'atkBuff', target: 'self', mode: 'mult', value: '150', duration: '2' };
-      if (characterId === 'gyumao') action.buff = { type: 'atkBuff', target: 'self', mode: 'mult', value: '200', duration: '1' };
+      if (preset.kind === 'skip') {
+        action.kind = 'skip'; action.skillName = preset.skill; action.skillPresetId = ''; action.effects = [];
+      } else {
+        const presetId = presetIdForCharacterSkill(characterId, preset.skill);
+        if (presetId) applySkillPresetToAction(action, presetId);
+        else { action.kind = preset.kind ?? 'attack'; action.skillName = preset.skill; action.skillPresetId = ''; }
+      }
     } else if (preset.secondSkill && turnIndex === 1) {
-      action.kind = preset.secondKind ?? 'attack';
-      action.skillName = preset.secondSkill;
+      const presetId = presetIdForCharacterSkill(characterId, preset.secondSkill);
+      if (presetId) applySkillPresetToAction(action, presetId);
+      else { action.kind = preset.secondKind ?? 'attack'; action.skillName = preset.secondSkill; action.skillPresetId = ''; }
     } else {
       action.kind = 'same';
       action.skillName = '';
+      action.skillPresetId = '';
     }
   });
 }
 
 function effectDefault(type, side) {
-  if (type === 'poison' || type === 'deadlyPoison') return { type };
+  if (type === 'poison' || type === 'deadlyPoison' || type === 'poisonToDeadly') return { type };
+  if (type === 'weaknessBuff') return { type, target: 'all', duration: '3' };
   if (type === 'heal') return { type, mode: 'flat', value: '200' };
   if (side === 'enemy') {
     if (type === 'allyAtkDebuff' || type === 'allySpeedDebuff') {
@@ -228,6 +325,18 @@ function effectFieldsHtml(effect, side) {
   if (type === 'poison' || type === 'deadlyPoison') {
     return '<div class="effect-note">後から付与した毒系状態で上書き</div>';
   }
+  if (type === 'poisonToDeadly') {
+    return '<div class="effect-note">敵が毒なら猛毒に変化</div>';
+  }
+  if (type === 'weaknessBuff') {
+    return `
+      <select class="effect-target" aria-label="対象">${targetOptions(effect.target ?? 'all')}</select>
+      <div class="input-with-suffix compact-input">
+        <input class="effect-duration" type="number" inputmode="numeric" step="1" min="1" max="99" value="${escapeHtml(effect.duration ?? '3')}" aria-label="継続ターン" />
+        <span class="suffix">ターン</span>
+      </div>
+      <div class="effect-note">弱点1.5→1.9 / 1.4→1.8</div>`;
+  }
   if (type === 'heal') {
     return `
       <select class="effect-mode" aria-label="回復方法">
@@ -249,6 +358,16 @@ function effectFieldsHtml(effect, side) {
       </select>`;
   const isAdd = type !== 'defenseDown' && effect.mode === 'add';
 
+  const expiryLabel = effect.expiry === 'sourceNextActionStart'
+    ? '使用者の次の行動開始まで'
+    : effect.expiry === 'sourceNextActionEnd' ? '使用者の次の行動終了まで' : '';
+  const durationControl = expiryLabel
+    ? `<div class="effect-note">${expiryLabel}</div>`
+    : `<div class="input-with-suffix compact-input">
+        <input class="effect-duration" type="number" inputmode="numeric" step="1" min="1" max="99" value="${escapeHtml(effect.duration ?? '1')}" aria-label="継続ターン" />
+        <span class="suffix">ターン</span>
+      </div>`;
+
   return `
     ${target}
     ${modeControl}
@@ -256,17 +375,14 @@ function effectFieldsHtml(effect, side) {
       <input class="effect-value" type="number" inputmode="decimal" step="0.1" value="${escapeHtml(effect.value ?? '100')}" aria-label="補正値" />
       <span class="suffix">${isAdd ? '' : '%'}</span>
     </div>
-    <div class="input-with-suffix compact-input">
-      <input class="effect-duration" type="number" inputmode="numeric" step="1" min="1" max="99" value="${escapeHtml(effect.duration ?? '1')}" aria-label="継続ターン" />
-      <span class="suffix">ターン</span>
-    </div>`;
+    ${durationControl}`;
 }
 
 function effectsHtml(effects, side, turnIndex, actorKey) {
   const types = side === 'enemy' ? ENEMY_EFFECT_TYPES : ALLY_EFFECT_TYPES;
   if (!effects.length) return '<div class="empty-note compact-empty">追加効果なし</div>';
   return effects.map((effect, effectIndex) => `
-    <div class="effect-row" data-turn-index="${turnIndex}" data-actor-key="${actorKey}" data-effect-index="${effectIndex}" data-effect-side="${side}">
+    <div class="effect-row" data-turn-index="${turnIndex}" data-actor-key="${actorKey}" data-effect-index="${effectIndex}" data-effect-side="${side}" data-effect-expiry="${escapeHtml(effect.expiry ?? '')}">
       <select class="effect-type" aria-label="追加効果">
         ${optionsHtml(types, effect.type)}
       </select>
@@ -299,12 +415,16 @@ function actionKindOptions(action, turnIndex) {
   return `
     <option value="attack" ${action.kind === 'attack' ? 'selected' : ''}>攻撃</option>
     <option value="buff" ${action.kind === 'buff' ? 'selected' : ''}>バフ</option>
+    <option value="effect" ${action.kind === 'effect' ? 'selected' : ''}>効果のみ</option>
     ${turnIndex > 0 ? `<option value="same" ${action.kind === 'same' ? 'selected' : ''}>同行動</option>` : ''}
     <option value="skip" ${action.kind === 'skip' ? 'selected' : ''}>行動スキップ</option>`;
 }
 
 function actionCardHtml(action, turnIndex, allyIndex) {
   const actorKey = `ally${allyIndex}`;
+  const randomMultiplier = action.skillMultiplierMin !== '' && action.skillMultiplierMax !== '';
+  const randomHits = action.hitsMin !== '' && action.hitsMax !== '';
+  const presetMeta = SKILL_PRESET_BY_ID.get(action.skillPresetId ?? '');
   return `
     <div class="action-card" data-turn-index="${turnIndex}" data-actor-key="${actorKey}">
       <div class="action-card-head">
@@ -313,16 +433,28 @@ function actionCardHtml(action, turnIndex, allyIndex) {
           ${actionKindOptions(action, turnIndex)}
         </select>
       </div>
-      ${action.kind !== 'same' ? `<label class="mini-field skill-name-field"><span>使用技</span><input class="skill-name" type="text" value="${escapeHtml(action.skillName ?? '')}" placeholder="技名"></label>` : ''}
+      ${action.kind !== 'same' ? `
+        <label class="mini-field"><span>主要技プリセット</span><select class="skill-preset">${skillPresetOptionsHtml(action.skillPresetId ?? '')}</select></label>
+        <label class="mini-field skill-name-field"><span>使用技</span><input class="skill-name" type="text" value="${escapeHtml(action.skillName ?? '')}" placeholder="技名"></label>
+        ${presetMeta?.note ? `<p class="inline-note">${escapeHtml(presetMeta.note)}</p>` : ''}` : ''}
       ${action.kind === 'attack' ? `
         <div class="action-input-grid">
-          <label class="mini-field"><span>技倍率</span><div class="input-with-suffix"><input class="skill-multiplier" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(action.skillMultiplier)}"><span class="suffix">%</span></div></label>
+          ${randomMultiplier ? `
+            <label class="mini-field"><span>技倍率 下限</span><div class="input-with-suffix"><input class="skill-multiplier-min" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(action.skillMultiplierMin)}"><span class="suffix">%</span></div></label>
+            <label class="mini-field"><span>技倍率 上限</span><div class="input-with-suffix"><input class="skill-multiplier-max" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(action.skillMultiplierMax)}"><span class="suffix">%</span></div></label>
+            <label class="mini-field"><span>倍率刻み</span><div class="input-with-suffix"><input class="skill-multiplier-step" type="number" inputmode="decimal" step="0.1" min="0.1" value="${escapeHtml(action.skillMultiplierStep || '0.1')}"><span class="suffix">%</span></div></label>` : `
+            <label class="mini-field"><span>技倍率</span><div class="input-with-suffix"><input class="skill-multiplier" type="number" inputmode="decimal" step="0.1" min="0" value="${escapeHtml(action.skillMultiplier)}"><span class="suffix">%</span></div></label>`}
           <label class="mini-field"><span>技属性</span><select class="attack-attribute">${optionsHtml(ATTACK_ATTRIBUTES, action.attackAttribute)}</select></label>
-          <label class="mini-field"><span>ヒット数</span><input class="hit-count" type="number" inputmode="numeric" step="1" min="1" max="50" value="${escapeHtml(action.hits)}"></label>
+          <label class="mini-field"><span>第2属性</span><select class="attack-attribute2">${optionsHtml(ATTACK_ATTRIBUTES, action.attackAttribute2 ?? 'none')}</select></label>
+          ${state.enemy.race === 'undead' ? `<label class="mini-field"><span>技分類</span><select class="attack-type">${optionsHtml(ATTACK_TYPE_OPTIONS, action.attackType ?? 'physical')}</select></label>` : ''}
+          ${randomHits ? `
+            <label class="mini-field"><span>ヒット数 下限</span><input class="hit-count-min" type="number" inputmode="numeric" step="1" min="1" max="50" value="${escapeHtml(action.hitsMin)}"></label>
+            <label class="mini-field"><span>ヒット数 上限</span><input class="hit-count-max" type="number" inputmode="numeric" step="1" min="1" max="50" value="${escapeHtml(action.hitsMax)}"></label>` : `
+            <label class="mini-field"><span>ヒット数</span><input class="hit-count" type="number" inputmode="numeric" step="1" min="1" max="50" value="${escapeHtml(action.hits)}"></label>`}
         </div>` : ''}
       ${action.kind === 'buff' ? primaryBuffHtml(action.buff, 'ally') : ''}
       ${action.kind === 'same' ? '<p class="same-action-note">前回の同モンスターの行動内容をそのまま使用します。</p>' : ''}
-      ${action.kind === 'attack' || action.kind === 'buff' ? `
+      ${['attack', 'buff', 'effect'].includes(action.kind) ? `
         <div class="effects-block">
           <div class="sub-heading"><span>追加効果</span><button type="button" class="mini-add add-effect" data-side="ally">＋追加</button></div>
           <div class="effects-list">${effectsHtml(action.effects ?? [], 'ally', turnIndex, actorKey)}</div>
@@ -441,9 +573,10 @@ function render() {
 
     <section class="panel">
       <h2>敵</h2>
-      <div class="field-grid three-col">
+      <div class="field-grid">
         <label class="field"><span class="field-label">HP</span><input id="enemyHp" type="number" inputmode="numeric" min="1" step="1" value="${escapeHtml(state.enemy.maxHp)}"></label>
         <label class="field"><span class="field-label">属性</span><select id="enemyAttribute">${optionsHtml(ENEMY_ATTRIBUTE_OPTIONS, state.enemy.attribute)}</select></label>
+        <label class="field"><span class="field-label">種族</span><select id="enemyRace">${optionsHtml(ENEMY_RACE_OPTIONS, state.enemy.race)}</select></label>
         <label class="field"><span class="field-label">素早さ</span><input id="enemySpeed" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(state.enemy.speed)}"></label>
       </div>
     </section>
@@ -485,6 +618,7 @@ function render() {
 function collectStateFromDom() {
   state.enemy.maxHp = root.querySelector('#enemyHp')?.value ?? state.enemy.maxHp;
   state.enemy.attribute = root.querySelector('#enemyAttribute')?.value ?? state.enemy.attribute;
+  state.enemy.race = root.querySelector('#enemyRace')?.value ?? state.enemy.race;
   state.enemy.speed = root.querySelector('#enemySpeed')?.value ?? state.enemy.speed;
   state.allyCount = Number(root.querySelector('#allyCount')?.value ?? state.allyCount);
 
@@ -519,9 +653,17 @@ function collectStateFromDom() {
       const allyIndex = Number(actorKey.replace('ally', ''));
       const action = state.turns[turnIndex].allyActions[allyIndex];
       action.kind = card.querySelector('.action-kind')?.value ?? action.kind;
+      action.skillPresetId = card.querySelector('.skill-preset')?.value ?? action.skillPresetId ?? '';
       action.skillMultiplier = card.querySelector('.skill-multiplier')?.value ?? action.skillMultiplier;
+      action.skillMultiplierMin = card.querySelector('.skill-multiplier-min')?.value ?? action.skillMultiplierMin ?? '';
+      action.skillMultiplierMax = card.querySelector('.skill-multiplier-max')?.value ?? action.skillMultiplierMax ?? '';
+      action.skillMultiplierStep = card.querySelector('.skill-multiplier-step')?.value ?? action.skillMultiplierStep ?? '';
       action.attackAttribute = card.querySelector('.attack-attribute')?.value ?? action.attackAttribute;
+      action.attackAttribute2 = card.querySelector('.attack-attribute2')?.value ?? action.attackAttribute2 ?? 'none';
+      action.attackType = card.querySelector('.attack-type')?.value ?? action.attackType ?? 'physical';
       action.hits = card.querySelector('.hit-count')?.value ?? action.hits;
+      action.hitsMin = card.querySelector('.hit-count-min')?.value ?? action.hitsMin ?? '';
+      action.hitsMax = card.querySelector('.hit-count-max')?.value ?? action.hitsMax ?? '';
       action.skillName = card.querySelector('.skill-name')?.value ?? action.skillName ?? '';
       action.buff = collectPrimaryBuff(card, 'ally', action.buff);
       action.effects = collectEffects(card);
@@ -551,10 +693,12 @@ function collectEffects(card) {
     const mode = row.querySelector('.effect-mode')?.value;
     const value = row.querySelector('.effect-value')?.value;
     const duration = row.querySelector('.effect-duration')?.value;
+    const expiry = row.dataset.effectExpiry;
     if (target !== undefined) effect.target = target;
     if (mode !== undefined) effect.mode = mode;
     if (value !== undefined) effect.value = value;
     if (duration !== undefined) effect.duration = duration;
+    if (expiry) effect.expiry = expiry;
     return effect;
   });
 }
@@ -597,6 +741,14 @@ root.addEventListener('change', event => {
     const card = event.target.closest('.ally-card');
     const allyIndex = Number(card?.dataset.allyIndex);
     if (Number.isInteger(allyIndex)) applyCharacterPreset(allyIndex, event.target.value);
+  } else if (event.target.classList.contains('skill-preset')) {
+    collectStateFromDom();
+    const card = event.target.closest('.action-card');
+    const turnIndex = Number(card?.dataset.turnIndex);
+    const actorKey = card?.dataset.actorKey ?? '';
+    const allyIndex = Number(actorKey.replace('ally', ''));
+    const action = state.turns?.[turnIndex]?.allyActions?.[allyIndex];
+    if (action) applySkillPresetToAction(action, event.target.value);
   } else {
     collectStateFromDom();
   }
@@ -604,7 +756,9 @@ root.addEventListener('change', event => {
   // 表示項目が変わる選択は全体を再描画。
   if (
     event.target.id === 'allyCount' ||
+    event.target.id === 'enemyRace' ||
     event.target.classList.contains('action-kind') ||
+    event.target.classList.contains('skill-preset') ||
     event.target.classList.contains('enemy-enabled') ||
     event.target.classList.contains('enemy-effect-type') ||
     event.target.classList.contains('ally-character') ||

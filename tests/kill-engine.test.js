@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { cloneDefaultState, simulateKillProbability } from '../kill/engine.js';
+import { attackDamageDistribution, cloneDefaultState, simulateKillProbability } from '../kill/engine.js';
+import { SKILL_PRESET_BY_ID } from '../kill/presets.js';
 
 function approx(actual, expected, eps = 1e-10) {
   assert.ok(Math.abs(actual - expected) <= eps, `expected ${expected}, got ${actual}`);
@@ -144,4 +145,57 @@ console.log('kill-engine tests: OK');
   base.turns[0].allyActions[0] = { kind: 'attack', skillMultiplier: '100', attackAttribute: 'none', hits: '1', effects: [] };
   const r = simulateKillProbability(base);
   approx(r.killChance, 0);
+}
+
+// 9) アンデッド補正：物理0.8、魔法1.2、それ以外1.0。
+{
+  const base = {
+    attack: 100, skillMultiplier: 100, attackAttribute: 'none', attackAttribute2: 'none',
+    defenderAttribute: 'fire', defenderRace: 'undead', defenseMods: [], hits: 1
+  };
+  const phys = attackDamageDistribution({ ...base, attackType: 'physical' });
+  const magic = attackDamageDistribution({ ...base, attackType: 'magic' });
+  const other = attackDamageDistribution({ ...base, attackType: 'other' });
+  assert.equal(Math.min(...phys.keys()), 76);
+  assert.equal(Math.max(...phys.keys()), 84);
+  assert.equal(Math.min(...magic.keys()), 114);
+  assert.equal(Math.max(...magic.keys()), 126);
+  assert.equal(Math.min(...other.keys()), 95);
+  assert.equal(Math.max(...other.keys()), 105);
+}
+
+// 10) 倍率レンジ・ヒット数レンジの確率合計は1になる。
+{
+  const dist = attackDamageDistribution({
+    attack: 100,
+    skillMultiplier: 80,
+    skillMultiplierMin: 70,
+    skillMultiplierMax: 90,
+    skillMultiplierStep: 0.1,
+    attackAttribute: 'wind',
+    attackAttribute2: 'none',
+    attackType: 'magic',
+    defenderAttribute: 'fire',
+    defenderRace: 'normal',
+    defenseMods: [],
+    hits: 3,
+    hitsMin: 3,
+    hitsMax: 5
+  });
+  approx([...dist.values()].reduce((a, b) => a + b, 0), 1, 1e-9);
+}
+
+
+// 11) 足ばらい・マーキングアローの防御ダウン定義をプリセットが保持する。
+{
+  const foot = SKILL_PRESET_BY_ID.get('foot_sweep');
+  assert.equal(foot.attackType, 'physical');
+  assert.deepEqual(foot.effects[0], {
+    type: 'defenseDown', mode: 'mult', value: '120', duration: '99', expiry: 'sourceNextActionStart'
+  });
+  const marking = SKILL_PRESET_BY_ID.get('marking_arrow');
+  assert.equal(marking.attackType, 'physical');
+  assert.deepEqual(marking.effects[0], {
+    type: 'defenseDown', mode: 'mult', value: '140', duration: '99', expiry: 'sourceNextActionEnd'
+  });
 }
